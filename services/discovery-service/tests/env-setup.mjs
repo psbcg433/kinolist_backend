@@ -1,0 +1,10 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kinolist_discovery_test';
+process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+process.env.INTERNAL_API_KEY = 'test-internal-key';
+process.env.MOVIE_SERVICE_URL = 'http://movie-service:5004';
+process.env.LIBRARY_SERVICE_URL = 'http://library-service:5003';
+process.env.TASTEDIVE_API_KEY = 'test-tastedive-key';
+process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+process.env.JWT_ALGORITHM = 'HS256';
+process.env.JWT_ACCESS_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';

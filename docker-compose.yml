@@ -1,0 +1,269 @@
+name: kinolist
+
+# =============================================================================
+# KinoList Microservices — local development / integration topology
+# -----------------------------------------------------------------------------
+# Start everything with:
+#   docker compose up --build
+#
+# Only the API Gateway is exposed to the host (port 5000). Every other Node
+# service, Mongo database and Redis live on the internal `kinolist-network`.
+#
+# Secrets are injected from the root `.env` file via ${...}. Do not bake
+# secrets into this file or the images.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Node deployables
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "${GATEWAY_PORT:-5000}:5000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5000
+      REDIS_URL: redis://redis:6379
+      AUTH_SERVICE_URL: http://auth-service:5001
+      PROFILE_SERVICE_URL: http://profile-service:5002
+      LIBRARY_SERVICE_URL: http://library-service:5003
+      MOVIE_SERVICE_URL: http://movie-service:5004
+      DISCOVERY_SERVICE_URL: http://discovery-service:5005
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  auth-service:
+    build: ./services/auth-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5001
+      MONGO_URI: mongodb://mongo-auth:27017/kinolist_auth
+      REDIS_URL: redis://redis:6379
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ACCESS_PRIVATE_KEY: ${JWT_ACCESS_PRIVATE_KEY}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      CSRF_SECRET: ${CSRF_SECRET}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
+      COOKIE_NAME: ${COOKIE_NAME:-kinolist_refresh}
+      COOKIE_PATH: ${COOKIE_PATH:-/api/auth}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
+    depends_on:
+      mongo-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  profile-service:
+    build: ./services/profile-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5002
+      MONGO_URI: mongodb://mongo-profile:27017/kinolist_profile
+      REDIS_URL: redis://redis:6379
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+    depends_on:
+      mongo-profile:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5002/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  library-service:
+    build: ./services/library-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5003
+      MONGO_URI: mongodb://mongo-library:27017/kinolist_library
+      REDIS_URL: redis://redis:6379
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    depends_on:
+      mongo-library:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5003/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  movie-service:
+    build: ./services/movie-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5004
+      MONGO_URI: mongodb://mongo-movie:27017/kinolist_movie
+      REDIS_URL: redis://redis:6379
+      OMDB_API_KEY: ${OMDB_API_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+    depends_on:
+      mongo-movie:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5004/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  discovery-service:
+    build: ./services/discovery-service
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5005
+      MONGO_URI: mongodb://mongo-discovery:27017/kinolist_discovery
+      REDIS_URL: redis://redis:6379
+      MOVIE_SERVICE_URL: http://movie-service:5004
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      TASTEDIVE_API_KEY: ${TASTEDIVE_API_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
+      JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      LIBRARY_SERVICE_URL: http://library-service:5003
+    depends_on:
+      mongo-discovery:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5005/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Databases (one Mongo logical database per stateful domain service)
+  # ---------------------------------------------------------------------------
+  mongo-auth:
+    image: mongo:7
+    volumes:
+      - kinolist-auth-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mongo-profile:
+    image: mongo:7
+    volumes:
+      - kinolist-profile-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mongo-library:
+    image: mongo:7
+    volumes:
+      - kinolist-library-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mongo-movie:
+    image: mongo:7
+    volumes:
+      - kinolist-movie-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mongo-discovery:
+    image: mongo:7
+    volumes:
+      - kinolist-discovery-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - kinolist-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+networks:
+  default:
+    name: kinolist-network
+
+volumes:
+  kinolist-auth-data:
+  kinolist-profile-data:
+  kinolist-library-data:
+  kinolist-movie-data:
+  kinolist-discovery-data:
+  kinolist-redis-data:
