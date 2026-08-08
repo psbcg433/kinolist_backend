@@ -1,9 +1,0 @@
-process.env.NODE_ENV = 'test';
-process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/kinolist_profile_test';
-process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
-process.env.CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'test-cloud';
-process.env.CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || 'test-key';
-process.env.CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || 'test-secret';
-process.env.JWT_ALGORITHM = 'HS256';
-process.env.JWT_ACCESS_SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
-process.env.MAX_IMAGE_BYTES = String(5 * 1024 * 1024);
