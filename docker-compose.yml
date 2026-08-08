@@ -67,16 +67,16 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
       CSRF_SECRET: ${CSRF_SECRET}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
-      TWO_FACTOR_CODE_TTL_SECONDS: ${TWO_FACTOR_CODE_TTL_SECONDS:-300}
-      TWO_FACTOR_CODE_MAX_ATTEMPTS: ${TWO_FACTOR_CODE_MAX_ATTEMPTS:-5}
-      SMTP_HOST: ${SMTP_HOST:-mailpit}
-      SMTP_PORT: ${SMTP_PORT:-1025}
-      SMTP_SECURE: ${SMTP_SECURE:-false}
-      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-false}
-      SMTP_TLS_REJECT_UNAUTHORIZED: ${SMTP_TLS_REJECT_UNAUTHORIZED:-true}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASS: ${SMTP_PASS:-}
-      SMTP_FROM: ${SMTP_FROM:-KinoList <no-reply@kinolist.local>}
+      TWO_FACTOR_CODE_TTL_SECONDS: ${TWO_FACTOR_CODE_TTL_SECONDS:?TWO_FACTOR_CODE_TTL_SECONDS is required}
+      TWO_FACTOR_CODE_MAX_ATTEMPTS: ${TWO_FACTOR_CODE_MAX_ATTEMPTS:?TWO_FACTOR_CODE_MAX_ATTEMPTS is required}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
+      SMTP_SECURE: ${SMTP_SECURE:?SMTP_SECURE is required}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:?SMTP_REQUIRE_TLS is required}
+      SMTP_TLS_REJECT_UNAUTHORIZED: ${SMTP_TLS_REJECT_UNAUTHORIZED:?SMTP_TLS_REJECT_UNAUTHORIZED is required}
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
+      SMTP_PASS: ${SMTP_PASS:?SMTP_PASS is required}
+      SMTP_FROM: ${SMTP_FROM:?SMTP_FROM is required}
       COOKIE_NAME: ${COOKIE_NAME:-kinolist_refresh}
       COOKIE_PATH: ${COOKIE_PATH:-/api}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -96,8 +96,6 @@ services:
       mongo-auth:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      mailpit:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:5001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -301,23 +299,6 @@ services:
       - kinolist-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-
-  # Local SMTP sink. Open http://localhost:8025 to inspect 2FA messages.
-  # Production deployments should point SMTP_* at their managed email relay.
-  mailpit:
-    image: axllent/mailpit:v1.30.0
-    ports:
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
-    environment:
-      MP_MAX_MESSAGES: ${MAILPIT_MAX_MESSAGES:-500}
-      MP_SMTP_AUTH_ACCEPT_ANY: "0"
-      MP_SMTP_AUTH_ALLOW_INSECURE: "0"
-    healthcheck:
-      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 5

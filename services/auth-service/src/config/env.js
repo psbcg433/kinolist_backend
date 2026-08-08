@@ -22,8 +22,17 @@ function optionalInt(name, fallback) {
   return value;
 }
 
-function optionalBool(name, fallback = false) {
-  const value = optional(name, String(fallback)).toLowerCase();
+function requiredInt(name) {
+  const raw = required(name);
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value)) {
+    throw new Error(`Environment variable ${name} must be an integer`);
+  }
+  return value;
+}
+
+function requiredBool(name) {
+  const value = required(name).toLowerCase();
   if (!['true', 'false'].includes(value)) {
     throw new Error(`Environment variable ${name} must be true or false`);
   }
@@ -78,18 +87,18 @@ const config = {
   csrfSecret: required('CSRF_SECRET'),
   twoFactor: {
     codePepper: required('TOTP_ENCRYPTION_KEY'),
-    codeTtlSeconds: optionalInt('TWO_FACTOR_CODE_TTL_SECONDS', 300),
-    maxAttempts: optionalInt('TWO_FACTOR_CODE_MAX_ATTEMPTS', 5),
+    codeTtlSeconds: requiredInt('TWO_FACTOR_CODE_TTL_SECONDS'),
+    maxAttempts: requiredInt('TWO_FACTOR_CODE_MAX_ATTEMPTS'),
   },
   smtp: {
-    host: optional('SMTP_HOST', 'localhost'),
-    port: optionalInt('SMTP_PORT', 1025),
-    secure: optionalBool('SMTP_SECURE', false),
-    requireTls: optionalBool('SMTP_REQUIRE_TLS', false),
-    rejectUnauthorized: optionalBool('SMTP_TLS_REJECT_UNAUTHORIZED', true),
-    user: optional('SMTP_USER', ''),
-    pass: optional('SMTP_PASS', ''),
-    from: optional('SMTP_FROM', 'KinoList <no-reply@kinolist.local>'),
+    host: required('SMTP_HOST'),
+    port: requiredInt('SMTP_PORT'),
+    secure: requiredBool('SMTP_SECURE'),
+    requireTls: requiredBool('SMTP_REQUIRE_TLS'),
+    rejectUnauthorized: requiredBool('SMTP_TLS_REJECT_UNAUTHORIZED'),
+    user: required('SMTP_USER'),
+    pass: required('SMTP_PASS'),
+    from: required('SMTP_FROM'),
   },
   sessionTtlDays: optionalInt('SESSION_TTL_DAYS', 30),
   refreshTokenTtlDays: optionalInt('REFRESH_TOKEN_TTL_DAYS', 30),
@@ -120,8 +129,8 @@ if (config.twoFactor.codeTtlSeconds < 60 || config.twoFactor.codeTtlSeconds > 90
 if (config.twoFactor.maxAttempts < 1 || config.twoFactor.maxAttempts > 10) {
   throw new Error('TWO_FACTOR_CODE_MAX_ATTEMPTS must be between 1 and 10');
 }
-if (Boolean(config.smtp.user) !== Boolean(config.smtp.pass)) {
-  throw new Error('SMTP_USER and SMTP_PASS must either both be set or both be empty');
+if (config.smtp.port < 1 || config.smtp.port > 65_535) {
+  throw new Error('SMTP_PORT must be between 1 and 65535');
 }
 
 export { config };
