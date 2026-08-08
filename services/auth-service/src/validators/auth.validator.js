@@ -17,7 +17,12 @@ export const twoFactorLoginSchema = {
 };
 
 export const twoFactorSetupVerifySchema = {
+  challengeId: (v) => requiredString(v, 'challengeId'),
   code: totpCode,
+};
+
+export const twoFactorSetupSchema = {
+  password: (v) => requiredString(v, 'Password'),
 };
 
 export const twoFactorResetSchema = {
@@ -42,6 +47,10 @@ export function validateTwoFactorLogin(body) {
 
 export function validateTwoFactorSetupVerify(body) {
   return validate(twoFactorSetupVerifySchema, body);
+}
+
+export function validateTwoFactorSetup(body) {
+  return validate(twoFactorSetupSchema, body);
 }
 
 export function validateTwoFactorReset(body) {

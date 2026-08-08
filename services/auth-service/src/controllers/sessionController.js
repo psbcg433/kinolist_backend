@@ -1,9 +1,9 @@
 import { authService } from '../services/authService.js';
+import { sendSuccess } from '../utils/response.js';
 
 function deviceContext(req) {
-  const forwarded = req.headers['x-forwarded-for'];
   return {
-    ip: forwarded ? String(forwarded).split(',')[0].trim() : req.socket.remoteAddress || '',
+    ip: req.ip || req.socket.remoteAddress || '',
     device: (req.headers['user-agent'] || '').slice(0, 300),
   };
 }
@@ -11,9 +11,8 @@ function deviceContext(req) {
 export const sessionController = {
   async list(req, res, next) {
     try {
-      const currentSid = req.auth.claims.sid;
-      const sessions = await authService.listSessions(req.auth.claims.sub, currentSid);
-      res.status(200).json({ success: true, data: { sessions }, meta: { currentSessionId: currentSid } });
+      const sessions = await authService.listSessions(req.auth.claims.sub, req.auth.claims.sid);
+      sendSuccess(req, res, { sessions });
     } catch (err) {
       next(err);
     }
@@ -22,7 +21,7 @@ export const sessionController = {
   async revoke(req, res, next) {
     try {
       await authService.revokeSession(req.auth.claims.sub, req.params.sessionId, deviceContext(req));
-      res.status(200).json({ success: true, data: { ok: true }, meta: {} });
+      sendSuccess(req, res, { revoked: true, sessionId: req.params.sessionId });
     } catch (err) {
       next(err);
     }

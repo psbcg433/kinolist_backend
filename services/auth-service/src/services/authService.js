@@ -11,9 +11,9 @@ import { csrfService } from './csrfService.js';
 import { sessionService } from './sessionService.js';
 import { refreshTokenService } from './refreshTokenService.js';
 import { tokenBlacklist } from './tokenBlacklist.js';
-import { totpService } from './totpService.js';
 import { twoFactorChallengeService } from './twoFactorChallengeService.js';
-import { publishUserRegistered, publishUserDeleted } from '../events/publishers/userEvents.js';
+import { emailService, maskEmail } from './emailService.js';
+import { buildUserRegisteredEvent, buildUserDeletedEvent } from '../events/publishers/userEvents.js';
 import { addDays } from './cookieService.js';
 
 export function sanitizeUser(user) {
@@ -21,11 +21,48 @@ export function sanitizeUser(user) {
     id: String(user._id),
     email: user.email,
     role: user.role,
-    name: user.name || '',
     twoFAEnabled: user.twoFAEnabled,
-    tokenVersion: user.tokenVersion,
-    createdAt: user.createdAt,
   };
+}
+
+async function deliverTwoFactorChallenge(user, purpose) {
+  const challenge = await twoFactorChallengeService.create(user._id, purpose);
+  try {
+    await emailService.sendTwoFactorChallenge({
+      email: user.email,
+      code: challenge.code,
+      purpose,
+      expiresInSeconds: challenge.expiresInSeconds,
+    });
+  } catch {
+    await twoFactorChallengeService.cancel(challenge.challengeId, user._id, purpose).catch(() => {});
+    throw new ApiError(
+      503,
+      'TWO_FACTOR_DELIVERY_FAILED',
+      'The verification email could not be sent. Please try again.'
+    );
+  }
+
+  return {
+    challengeId: challenge.challengeId,
+    expiresInSeconds: challenge.expiresInSeconds,
+    delivery: {
+      channel: 'email',
+      destination: maskEmail(user.email),
+    },
+  };
+}
+
+async function revokeOtherSessions(userId, currentSid, reason) {
+  const sessions = await sessionRepository.listActiveByUser(userId);
+  const revokedSessionIds = sessions
+    .map((session) => String(session._id))
+    .filter((sessionId) => sessionId !== String(currentSid));
+  await Promise.all([
+    sessionRepository.revokeAllExcept(userId, currentSid, reason),
+    refreshTokenRepository.revokeAllExceptSession(userId, currentSid, reason),
+    ...revokedSessionIds.map((sessionId) => tokenBlacklist.revokeSession(sessionId)),
+  ]);
 }
 
 export const authService = {
@@ -37,15 +74,19 @@ export const authService = {
     }
 
     const passwordHash = await passwordService.hash(password);
-    const user = await userRepository.create({ email: normalizedEmail, passwordHash });
-
-    await publishUserRegistered(
-      user,
+    const userId = userRepository.newId();
+    const pendingEvent = buildUserRegisteredEvent(
+      { _id: userId, email: normalizedEmail },
       { correlationId },
       { name: name ? String(name).trim().slice(0, 100) : undefined }
     );
+    const user = await userRepository.create({
+      id: userId,
+      email: normalizedEmail,
+      passwordHash,
+      pendingEvent,
+    });
 
-    const credentials = await sessionService.issueCredentials({ user, device, ip });
     await authLogRepository.record({
       userId: user._id,
       event: 'user_registered',
@@ -54,7 +95,10 @@ export const authService = {
       correlationId,
     });
 
-    return { user, credentials };
+    // Registration proves control of neither an existing session nor a second
+    // factor. Keep account creation separate from authentication: credentials
+    // are issued only by login (and, when enabled, only after 2FA verification).
+    return { registered: true };
   },
 
   async login({ email, password }, { device = '', ip = '' } = {}) {
@@ -74,14 +118,14 @@ export const authService = {
     }
 
     if (user.twoFAEnabled) {
-      const challengeId = await twoFactorChallengeService.create(user._id);
+      const challenge = await deliverTwoFactorChallenge(user, 'login');
       await authLogRepository.record({
         userId: user._id,
         event: 'login_two_factor_challenged',
         ip,
         device,
       });
-      return { requiresTwoFactor: true, challengeId, user: { id: String(user._id), email: user.email } };
+      return { requiresTwoFactor: true, ...challenge };
     }
 
     const credentials = await sessionService.issueCredentials({ user, device, ip });
@@ -90,15 +134,14 @@ export const authService = {
   },
 
   async verifyTwoFactorLogin({ challengeId, code }, { device = '', ip = '' } = {}) {
-    const challenge = await twoFactorChallengeService.consume(challengeId);
-    if (!challenge) {
-      throw new ApiError(410, 'CHALLENGE_INVALID', 'This login attempt has expired. Please sign in again.');
-    }
+    const challenge = await twoFactorChallengeService.verify(challengeId, code, 'login');
     const user = await userRepository.findById(challenge.userId);
     if (!user || user.status !== 'active') {
       throw new ApiError(401, 'ACCOUNT_UNAVAILABLE', 'This account is no longer available.');
     }
-    await totpService.verify(user.twoFASecretEncrypted, code);
+    if (!user.twoFAEnabled) {
+      throw new ApiError(409, 'TWO_FACTOR_NOT_ENABLED', 'Email two-factor authentication is not enabled');
+    }
     const credentials = await sessionService.issueCredentials({ user, device, ip });
     await authLogRepository.record({
       userId: user._id,
@@ -142,7 +185,7 @@ export const authService = {
       }
       await sessionRepository.revokeById(stored.sessionId, 'logout');
       await refreshTokenRepository.revokeBySession(stored.sessionId, 'logout');
-      await tokenBlacklist.revokeSession(String(stored.sessionId)).catch(() => {});
+      await tokenBlacklist.revokeSession(String(stored.sessionId));
       await authLogRepository.record({
         userId: stored.userId,
         event: 'logout',
@@ -158,9 +201,9 @@ export const authService = {
   async revokeSessionCredentials(sid, reason, userId, jti, ip = '', device = '') {
     await sessionRepository.revokeById(sid, reason);
     await refreshTokenRepository.revokeBySession(sid, reason);
-    await tokenBlacklist.revokeSession(String(sid)).catch(() => {});
+    await tokenBlacklist.revokeSession(String(sid));
     if (jti) {
-      await tokenBlacklist.revokeJti(jti).catch(() => {});
+      await tokenBlacklist.revokeJti(jti);
       await revokedTokenRepository
         .create({ jti, userId, sid, expiresAt: addDays(new Date(), 1) })
         .catch(() => {});
@@ -172,7 +215,7 @@ export const authService = {
     const userId = claims.sub;
     await sessionRepository.revokeAllForUser(userId, 'logout_all');
     await refreshTokenRepository.revokeAllForUser(userId, 'logout_all');
-    await tokenBlacklist.revokeJti(claims.jti).catch(() => {});
+    await tokenBlacklist.revokeJti(claims.jti);
     await revokedTokenRepository
       .create({
         jti: claims.jti,
@@ -184,7 +227,7 @@ export const authService = {
 
     const user = await userRepository.incrementTokenVersion(userId);
     if (user) {
-      await tokenBlacklist.setTokenVersion(userId, user.tokenVersion).catch(() => {});
+      await tokenBlacklist.setTokenVersion(userId, user.tokenVersion);
     }
     await authLogRepository.record({ userId, event: 'logout_all', ip, device });
     return true;
@@ -210,7 +253,7 @@ export const authService = {
     }
     await sessionRepository.revokeById(session._id, 'user_revoked');
     await refreshTokenRepository.revokeBySession(session._id, 'user_revoked');
-    await tokenBlacklist.revokeSession(String(session._id)).catch(() => {});
+    await tokenBlacklist.revokeSession(String(session._id));
     await authLogRepository.record({
       userId,
       event: 'session_revoked',
@@ -221,53 +264,42 @@ export const authService = {
     return true;
   },
 
-  async twoFactorSetup(userId, { ip = '', device = '' } = {}) {
+  async twoFactorSetup(userId, password, { ip = '', device = '' } = {}) {
     const user = await userRepository.findById(userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
     if (user.twoFAEnabled) {
       throw new ApiError(409, 'TWO_FA_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
     }
-    const pending = totpService.generatePendingSecret(user.email);
-    user.pendingTwoFASecretEncrypted = pending.encrypted;
-    user.pendingTwoFASecretExpiresAt = addDays(new Date(), 0);
-    // Keep pending secret valid for 10 minutes
-    user.pendingTwoFASecretExpiresAt.setMinutes(user.pendingTwoFASecretExpiresAt.getMinutes() + 10);
-    await user.save();
-
-    const qr = await totpService.qrDataUrl(pending.otpauthUrl);
+    const matches = await passwordService.compare(password, user.passwordHash);
+    if (!matches) {
+      throw new ApiError(403, 'INVALID_CREDENTIALS', 'Current password is incorrect');
+    }
+    const challenge = await deliverTwoFactorChallenge(user, 'setup');
     await authLogRepository.record({ userId, event: 'two_factor_setup_started', ip, device });
-    return { qr, secret: pending.base32 };
+    return challenge;
   },
 
-  async twoFactorSetupVerify(userId, code, { ip = '', device = '' } = {}) {
+  async twoFactorSetupVerify(userId, currentSid, challengeId, code, { ip = '', device = '' } = {}) {
     const user = await userRepository.findById(userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
     if (user.twoFAEnabled) {
       throw new ApiError(409, 'TWO_FA_ALREADY_ENABLED', 'Two-factor authentication is already enabled');
     }
-    if (!user.pendingTwoFASecretEncrypted) {
-      throw new ApiError(400, 'TWO_FA_SETUP_NOT_PENDING', 'No pending two-factor setup found');
-    }
-    if (!user.pendingTwoFASecretExpiresAt || user.pendingTwoFASecretExpiresAt < new Date()) {
-      user.pendingTwoFASecretEncrypted = '';
-      user.pendingTwoFASecretExpiresAt = null;
-      await user.save();
-      throw new ApiError(410, 'TWO_FA_SETUP_EXPIRED', 'The pending two-factor setup expired. Start again.');
+    const challenge = await twoFactorChallengeService.verify(challengeId, code, 'setup');
+    if (String(challenge.userId) !== String(userId)) {
+      throw new ApiError(403, 'FORBIDDEN', 'This verification challenge belongs to another account');
     }
 
-    await totpService.verify(user.pendingTwoFASecretEncrypted, code);
-
-    user.twoFASecretEncrypted = user.pendingTwoFASecretEncrypted;
     user.twoFAEnabled = true;
-    user.pendingTwoFASecretEncrypted = '';
-    user.pendingTwoFASecretExpiresAt = null;
     await user.save();
+    await revokeOtherSessions(userId, currentSid, 'two_factor_enabled');
 
     await authLogRepository.record({ userId, event: 'two_factor_enabled', ip, device });
     return true;
   },
 
-  async twoFactorReset(userId, password, { ip = '', device = '' } = {}) {    const user = await userRepository.findById(userId);
+  async twoFactorReset(userId, currentSid, password, { ip = '', device = '' } = {}) {
+    const user = await userRepository.findById(userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found');
     if (!user.twoFAEnabled) {
       throw new ApiError(400, 'TWO_FA_NOT_SETUP', 'Two-factor authentication is not enabled');
@@ -277,10 +309,8 @@ export const authService = {
       throw new ApiError(403, 'INVALID_CREDENTIALS', 'Current password is incorrect');
     }
     user.twoFAEnabled = false;
-    user.twoFASecretEncrypted = '';
-    user.pendingTwoFASecretEncrypted = '';
-    user.pendingTwoFASecretExpiresAt = null;
     await user.save();
+    await revokeOtherSessions(userId, currentSid, 'two_factor_disabled');
     await authLogRepository.record({ userId, event: 'two_factor_reset', ip, device });
     return true;
   },
@@ -295,13 +325,15 @@ export const authService = {
       throw new ApiError(403, 'INVALID_CREDENTIALS', 'Current password is incorrect');
     }
 
-    const updated = await userRepository.markDeleted(userId);
+    const pendingEvent = buildUserDeletedEvent(userId, { correlationId });
+    const updated = await userRepository.markDeleted(userId, pendingEvent);
+    if (!updated) {
+      throw new ApiError(409, 'ACCOUNT_UNAVAILABLE', 'This account is no longer available');
+    }
     await sessionRepository.revokeAllForUser(userId, 'account_deleted');
     await refreshTokenRepository.revokeAllForUser(userId, 'account_deleted');
-    await tokenBlacklist.setTokenVersion(userId, updated.tokenVersion).catch(() => {});
+    await tokenBlacklist.setTokenVersion(userId, updated.tokenVersion);
     await authLogRepository.record({ userId, event: 'account_deleted', ip, device });
-
-    await publishUserDeleted(userId, { correlationId });
 
     return { deleted: true };
   },

@@ -69,7 +69,7 @@ export const refreshTokenService = {
   async handleReuse(stored) {
     await refreshTokenRepository.revokeByFamily(stored.familyId, 'reuse_detected');
     await sessionRepository.revokeById(stored.sessionId, 'reuse_detected');
-    await tokenBlacklist.revokeSession(String(stored.sessionId)).catch(() => {});
+    await tokenBlacklist.revokeSession(String(stored.sessionId));
     await authLogRepository.record({
       userId: stored.userId,
       event: 'refresh_token_reuse',

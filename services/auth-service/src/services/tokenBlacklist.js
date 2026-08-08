@@ -1,5 +1,6 @@
 import { getRedis } from '../config/redis.js';
 import { logger } from '../utils/logger.js';
+import { ApiError } from '../utils/ApiError.js';
 
 // Shared Redis revocation state. Namespaces:
 //   auth:blacklist:{jti}      -> revoked access token
@@ -20,16 +21,24 @@ function parseAccessTtlSeconds(ttl) {
   }
 }
 
+function authorizationUnavailable() {
+  return new ApiError(
+    503,
+    'AUTHORIZATION_UNAVAILABLE',
+    'Authorization state is temporarily unavailable'
+  );
+}
+
 export const tokenBlacklist = {
   accessTtlSeconds: parseAccessTtlSeconds(process.env.JWT_ACCESS_TTL || '15m'),
 
-  async revokeJti(jti, { durable = false } = {}) {
+  async revokeJti(jti) {
     try {
       const redis = getRedis();
       await redis.set(`auth:blacklist:${jti}`, '1', 'EX', this.accessTtlSeconds);
     } catch (err) {
       logger.error('blacklist_jti_failed', { message: err.message });
-      if (!durable) throw err;
+      throw authorizationUnavailable();
     }
   },
 
@@ -37,9 +46,9 @@ export const tokenBlacklist = {
     try {
       const redis = getRedis();
       return (await redis.exists(`auth:blacklist:${jti}`)) === 1;
-    } catch {
-      logger.warn('blacklist_check_redis_failure');
-      return false;
+    } catch (err) {
+      logger.error('blacklist_check_redis_failure', { message: err.message });
+      throw authorizationUnavailable();
     }
   },
 
@@ -49,7 +58,7 @@ export const tokenBlacklist = {
       await redis.set(`auth:sid-revoked:${sid}`, '1', 'EX', this.accessTtlSeconds);
     } catch (err) {
       logger.error('blacklist_sid_failed', { message: err.message });
-      throw err;
+      throw authorizationUnavailable();
     }
   },
 
@@ -57,9 +66,9 @@ export const tokenBlacklist = {
     try {
       const redis = getRedis();
       return (await redis.exists(`auth:sid-revoked:${sid}`)) === 1;
-    } catch {
-      logger.warn('blacklist_sid_check_redis_failure');
-      return false;
+    } catch (err) {
+      logger.error('blacklist_sid_check_redis_failure', { message: err.message });
+      throw authorizationUnavailable();
     }
   },
 
@@ -69,7 +78,7 @@ export const tokenBlacklist = {
       await redis.set(`auth:tv:${userId}`, String(version), 'EX', this.accessTtlSeconds);
     } catch (err) {
       logger.error('tv_set_failed', { message: err.message });
-      throw err;
+      throw authorizationUnavailable();
     }
   },
 
@@ -78,8 +87,9 @@ export const tokenBlacklist = {
       const redis = getRedis();
       const value = await redis.get(`auth:tv:${userId}`);
       return value ? Number(value) : null;
-    } catch {
-      return null;
+    } catch (err) {
+      logger.error('tv_get_failed', { message: err.message });
+      throw authorizationUnavailable();
     }
   },
 };

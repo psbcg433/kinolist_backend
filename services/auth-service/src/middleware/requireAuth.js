@@ -12,13 +12,19 @@ export async function requireAuth(req, _res, next) {
     const token = header.slice(7).trim();
     const claims = jwtService.verifyAccessToken(token);
 
-    if (await tokenBlacklist.isJtiRevoked(claims.jti)) {
-      throw new ApiError(401, 'TOKEN_REVOKED', 'Access token has been revoked');
+    let currentTv;
+    try {
+      if (await tokenBlacklist.isJtiRevoked(claims.jti)) {
+        throw new ApiError(401, 'TOKEN_REVOKED', 'Access token has been revoked');
+      }
+      if (await tokenBlacklist.isSessionRevoked(claims.sid)) {
+        throw new ApiError(401, 'SESSION_REVOKED', 'Your session has been revoked');
+      }
+      currentTv = await tokenBlacklist.getTokenVersion(claims.sub);
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      throw new ApiError(503, 'AUTHORIZATION_UNAVAILABLE', 'Authorization state is temporarily unavailable');
     }
-    if (await tokenBlacklist.isSessionRevoked(claims.sid)) {
-      throw new ApiError(401, 'SESSION_REVOKED', 'Your session has been revoked');
-    }
-    const currentTv = await tokenBlacklist.getTokenVersion(claims.sub);
     if (currentTv !== null && currentTv !== claims.tokenVersion) {
       throw new ApiError(401, 'TOKEN_VERSION_CHANGED', 'Your session has been invalidated');
     }

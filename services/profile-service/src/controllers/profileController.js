@@ -1,11 +1,13 @@
 import { profileService } from '../services/profileService.js';
 import { validateProfileUpdate } from '../validators/profile.validator.js';
+import { sendSuccess } from '../utils/response.js';
+import { ApiError } from '../utils/ApiError.js';
 
-function pickedFields(req) {
+export function pickedFields(req) {
   const files = req.files || {};
   return {
-    profilePic: files.profilePic?.[0] || null,
-    coverPic: files.coverPic?.[0] || null,
+    profilePicFile: files.profilePic?.[0] || null,
+    coverPicFile: files.coverPic?.[0] || null,
   };
 }
 
@@ -13,7 +15,7 @@ export const profileController = {
   async getMe(req, res, next) {
     try {
       const user = await profileService.getByUserId(req.auth.userId);
-      res.json({ success: true, data: { user } });
+      sendSuccess(req, res, { user });
     } catch (err) {
       next(err);
     }
@@ -21,8 +23,11 @@ export const profileController = {
 
   async getById(req, res, next) {
     try {
+      if (String(req.params.id) !== String(req.auth.userId)) {
+        throw new ApiError(403, 'FORBIDDEN', 'You cannot view another user\u2019s private profile');
+      }
       const user = await profileService.getByUserId(req.params.id);
-      res.json({ user });
+      sendSuccess(req, res, { user });
     } catch (err) {
       next(err);
     }
@@ -33,7 +38,7 @@ export const profileController = {
       const fields = validateProfileUpdate(req.body);
       const files = pickedFields(req);
       const user = await profileService.update({ userId: req.auth.userId, ...fields, ...files });
-      res.json({ user });
+      sendSuccess(req, res, { user });
     } catch (err) {
       next(err);
     }

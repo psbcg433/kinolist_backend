@@ -6,6 +6,7 @@ import { requireAuth, requireAuthIfPresent } from '../middleware/requireAuth.js'
 import {
   requireRefreshCookie,
   requireRefreshCookieIfAnonymous,
+  requireCsrfCookieIfAnonymous,
   requireCsrfCookie,
   requireCsrfBearer,
 } from '../middleware/requireCsrf.js';
@@ -53,7 +54,13 @@ router.delete(
 );
 
 // Logout accepts either a Bearer access token or a cookie session + CSRF
-router.post('/logout', requireAuthIfPresent, requireRefreshCookieIfAnonymous, authController.logout);
+router.post(
+  '/logout',
+  requireAuthIfPresent,
+  requireRefreshCookieIfAnonymous,
+  requireCsrfCookieIfAnonymous,
+  authController.logout
+);
 
 // Logout everywhere: Bearer + CSRF
 router.post('/logout-all', requireAuth, requireCsrfBearer(), authController.logoutAll);
@@ -63,7 +70,12 @@ router.get('/sessions', requireAuth, sessionController.list);
 router.delete('/sessions/:sessionId', requireAuth, sessionController.revoke);
 
 // 2FA lifecycle (authenticated)
-router.post('/2fa/setup', requireAuth, twoFactorController.setup);
+router.post(
+  '/2fa/setup',
+  rateLimit({ namespace: '2fa', max: config.rateLimit.twoFAMax }),
+  requireAuth,
+  twoFactorController.setup
+);
 router.post(
   '/2fa/setup/verify',
   rateLimit({ namespace: '2fa', max: config.rateLimit.twoFAMax }),

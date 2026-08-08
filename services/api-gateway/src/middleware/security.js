@@ -17,14 +17,23 @@ const SPOOFABLE_HEADERS = [
   'x-service-token',
   'x-forwarded-user',
   'x-role',
+  'x-internal-key',
 ];
 
 export function stripHopByHopHeaders(req, _res, next) {
+  // Resolve the client IP through Express's explicitly configured trust policy
+  // before removing caller-controlled forwarding headers.
+  req.clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  req.hadTransferEncoding = Object.hasOwn(req.headers, 'transfer-encoding');
+
   for (const header of HOP_BY_HOP_HEADERS) {
-    req.headers[header] = undefined;
+    delete req.headers[header];
   }
   for (const header of SPOOFABLE_HEADERS) {
-    req.headers[header] = undefined;
+    delete req.headers[header];
+  }
+  for (const header of ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto']) {
+    delete req.headers[header];
   }
   next();
 }

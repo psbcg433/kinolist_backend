@@ -1,4 +1,5 @@
 import { playlistService } from '../services/playlistService.js';
+import { sendSuccess } from '../utils/response.js';
 
 export const internalController = {
   async itemsForUser(req, res, next) {
@@ -7,8 +8,8 @@ export const internalController = {
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean);
-      const items = await playlistService.itemsForUser(req.params.userId, types);
-      res.json({ success: true, data: items });
+      const itemsByType = await playlistService.itemsForUser(req.params.userId, types);
+      sendSuccess(req, res, { itemsByType });
     } catch (err) {
       next(err);
     }

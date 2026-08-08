@@ -40,4 +40,12 @@ export const refreshTokenRepository = {
       { $set: { revokedAt: now, revokeReason: reason } }
     );
   },
+
+  async revokeAllExceptSession(userId, sessionId, reason) {
+    const now = new Date();
+    return RefreshToken.updateMany(
+      { userId, sessionId: { $ne: sessionId }, revokedAt: null },
+      { $set: { revokedAt: now, revokeReason: reason } }
+    );
+  },
 };

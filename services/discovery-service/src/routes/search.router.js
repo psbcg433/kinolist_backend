@@ -1,12 +1,11 @@
 import { Router } from 'express';
-import { requireAuthIfPresent } from '../middleware/auth.middleware.js';
+import { requireAuth, requireAuthIfPresent } from '../middleware/auth.middleware.js';
+import { aiRateLimit } from '../middleware/aiRateLimit.js';
 import { searchController } from '../controllers/searchController.js';
 
 const router = Router();
 
-router.use(requireAuthIfPresent);
-
-router.get('/', searchController.normal);
-router.get('/ai', searchController.ai);
+router.get('/', requireAuthIfPresent, searchController.normal);
+router.get('/ai', requireAuth, aiRateLimit(), searchController.ai);
 
 export default router;

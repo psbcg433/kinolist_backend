@@ -4,8 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
 
 function clientKey(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = forwarded ? String(forwarded).split(',')[0].trim() : req.socket.remoteAddress || 'unknown';
+  const ip = req.clientIp || req.ip || req.socket.remoteAddress || 'unknown';
   return `gateway:rate:${ip}`;
 }
 
@@ -26,10 +25,11 @@ export function rateLimit({ windowMs = config.rateLimitWindowMs, max = config.ra
       }
       return next();
     } catch (err) {
-      // Fail-open on Redis outage for the gateway-level limiter; services still
-      // enforce their own protection. Documented in docs/architecture.md.
       logger.warn('rate_limit_redis_failure', { message: err.message });
-      return next();
+      // The gateway also protects anonymous provider-backed routes. Letting
+      // requests through without a shared counter would turn a Redis outage
+      // into an unlimited external-API abuse window.
+      return next(new ApiError(503, 'RATE_LIMIT_UNAVAILABLE', 'The API is temporarily unavailable'));
     }
   };
 }

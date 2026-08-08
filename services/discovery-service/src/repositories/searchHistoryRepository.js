@@ -5,11 +5,32 @@ export const searchHistoryRepository = {
     const entry = { q: query, at: new Date() };
     return SearchHistory.findOneAndUpdate(
       { userId },
-      {
-        $pull: { queries: { q: query } },
-        $push: { queries: { $each: [entry], $slice: -cap } },
-        $set: { lastSearched: query, lastSearchedAt: entry.at },
-      },
+      [
+        {
+          $set: {
+            userId,
+            queries: {
+              $slice: [
+                {
+                  $concatArrays: [
+                    {
+                      $filter: {
+                        input: { $ifNull: ['$queries', []] },
+                        as: 'existing',
+                        cond: { $ne: ['$$existing.q', query] },
+                      },
+                    },
+                    [entry],
+                  ],
+                },
+                -cap,
+              ],
+            },
+            lastSearched: query,
+            lastSearchedAt: entry.at,
+          },
+        },
+      ],
       { upsert: true, new: true }
     ).lean();
   },

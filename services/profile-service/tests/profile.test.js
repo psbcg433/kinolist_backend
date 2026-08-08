@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { validateProfileUpdate } from '../src/validators/profile.validator.js';
 import { ApiError } from '../src/utils/ApiError.js';
 import { sniffImage } from '../src/validators/upload.validator.js';
+import { consumeProfileEvents, parseStreamEntry } from '../src/events/consumers/profileConsumer.js';
+import { pickedFields } from '../src/controllers/profileController.js';
+import { profileDTO } from '../src/services/profileService.js';
 
 function assertValidation(fn, message) {
   try {
@@ -71,6 +74,72 @@ const tests = {
     assert.ok(sniffImage(webp));
     assert.ok(!sniffImage(text));
     assert.ok(!sniffImage(Buffer.alloc(4)));
+  },
+
+  'registration events decode from the domain envelope': () => {
+    const envelope = {
+      eventType: 'USER_REGISTERED.v1',
+      schemaVersion: 1,
+      payload: { userId: 'u1', name: 'Alice' },
+    };
+    const event = parseStreamEntry(['event', JSON.stringify(envelope)]);
+    assert.equal(event.type, 'USER_REGISTERED.v1');
+    assert.equal(event.version, 1);
+    assert.deepEqual(event.data, { userId: 'u1', name: 'Alice' });
+  },
+
+  'uploaded images are mapped to the service file fields': () => {
+    const profilePic = { buffer: Buffer.from('profile') };
+    const coverPic = { buffer: Buffer.from('cover') };
+    assert.deepEqual(
+      pickedFields({ files: { profilePic: [profilePic], coverPic: [coverPic] } }),
+      { profilePicFile: profilePic, coverPicFile: coverPic }
+    );
+  },
+
+  'profile DTO exposes only client-facing profile fields': () => {
+    const profile = profileDTO({
+      userId: 'user-1',
+      name: 'Alice',
+      bio: 'Film lover',
+      profilePicUrl: 'https://cdn/profile.jpg',
+      coverPicUrl: 'https://cdn/cover.jpg',
+      profilePicPublicId: 'private-cloud-id',
+      coverPicPublicId: 'private-cover-id',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    assert.deepEqual(profile, {
+      id: 'user-1',
+      name: 'Alice',
+      bio: 'Film lover',
+      profilePic: 'https://cdn/profile.jpg',
+      coverPic: 'https://cdn/cover.jpg',
+    });
+  },
+
+  'event consumer never overlaps blocking stream reads': async () => {
+    let activeReads = 0;
+    let maxActiveReads = 0;
+    let readCount = 0;
+    const redis = {
+      xgroup: async () => 'OK',
+      xautoclaim: async () => ['0-0', []],
+      xreadgroup: async () => {
+        activeReads += 1;
+        readCount += 1;
+        maxActiveReads = Math.max(maxActiveReads, activeReads);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeReads -= 1;
+        return null;
+      },
+    };
+
+    const consumer = await consumeProfileEvents({ redisClient: redis, pollIntervalMs: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await consumer.stop();
+    assert.ok(readCount >= 2);
+    assert.equal(maxActiveReads, 1);
   },
 };
 

@@ -9,34 +9,39 @@ import { refreshCookieOptions, clearCookieOptions } from '../services/cookieServ
 import { csrfService } from '../services/csrfService.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
+import { sendSuccess } from '../utils/response.js';
 
 function deviceContext(req) {
-  const forwarded = req.headers['x-forwarded-for'];
   return {
-    ip: forwarded ? String(forwarded).split(',')[0].trim() : req.socket.remoteAddress || '',
+    ip: req.ip || req.socket.remoteAddress || '',
     device: (req.headers['user-agent'] || '').slice(0, 300),
     correlationId: req.id || null,
   };
 }
 
-// Legacy client reads top-level `user`/`token`/`twoFAEnabled` (setCredentials
-// expects `{ user, token }`). Mirror those fields alongside the modern
-// envelope so both clients keep working without weakening the secure flow.
-function authSuccess(res, status, { user, accessToken, csrfToken, requiresTwoFactor = false } = {}) {
+function authSuccess(req, res, status, { user, accessToken, csrfToken } = {}) {
   const sanitized = user ? sanitizeUser(user) : null;
-  return res.status(status).json({
-    success: true,
-    data: {
-      ...(sanitized ? { user: sanitized } : {}),
-      ...(accessToken ? { accessToken } : {}),
-      ...(csrfToken ? { csrfToken } : {}),
-      ...(requiresTwoFactor ? { requiresTwoFactor: true } : {}),
-    },
-    meta: {},
+  return sendSuccess(req, res, {
     ...(sanitized ? { user: sanitized } : {}),
-    ...(accessToken ? { token: accessToken } : {}),
-    twoFAEnabled: requiresTwoFactor ? true : !!(sanitized && sanitized.twoFactorEnabled),
-  });
+    ...(accessToken ? { accessToken } : {}),
+    ...(csrfToken ? { csrfToken } : {}),
+  }, { status });
+}
+
+function setRefreshCookie(res, refreshToken) {
+  // Remove cookies created before the versioned API widened COOKIE_PATH from
+  // /api/auth to /api, then set the canonical cookie.
+  if (config.cookie.path !== '/api/auth') {
+    res.clearCookie(config.cookie.name, { ...clearCookieOptions(), path: '/api/auth' });
+  }
+  res.cookie(config.cookie.name, refreshToken, refreshCookieOptions());
+}
+
+function clearRefreshCookies(res) {
+  res.clearCookie(config.cookie.name, clearCookieOptions());
+  if (config.cookie.path !== '/api/auth') {
+    res.clearCookie(config.cookie.name, { ...clearCookieOptions(), path: '/api/auth' });
+  }
 }
 
 export const authController = {
@@ -44,16 +49,11 @@ export const authController = {
     try {
       validateRegister(req.body);
       const { email, password, name } = req.body;
-      const { user, credentials } = await authService.register(
+      const result = await authService.register(
         { email, password, name },
         deviceContext(req)
       );
-      res.cookie(config.cookie.name, credentials.refreshToken, refreshCookieOptions());
-      return authSuccess(res, 201, {
-        user,
-        accessToken: credentials.accessToken,
-        csrfToken: credentials.csrfToken,
-      });
+      return sendSuccess(req, res, result, { status: 201 });
     } catch (err) {
       next(err);
     }
@@ -65,21 +65,16 @@ export const authController = {
       const result = await authService.login(req.body, deviceContext(req));
 
       if (result.requiresTwoFactor) {
-        return res.status(200).json({
-          success: true,
-          data: {
-            requiresTwoFactor: true,
-            challengeId: result.challengeId,
-            user: result.user,
-          },
-          meta: {},
-          user: result.user,
-          twoFAEnabled: true,
+        return sendSuccess(req, res, {
+          requiresTwoFactor: true,
+          challengeId: result.challengeId,
+          expiresInSeconds: result.expiresInSeconds,
+          delivery: result.delivery,
         });
       }
 
-      res.cookie(config.cookie.name, result.credentials.refreshToken, refreshCookieOptions());
-      return authSuccess(res, 200, {
+      setRefreshCookie(res, result.credentials.refreshToken);
+      return authSuccess(req, res, 200, {
         user: result.credentials.user,
         accessToken: result.credentials.accessToken,
         csrfToken: result.credentials.csrfToken,
@@ -97,8 +92,8 @@ export const authController = {
         { challengeId, code },
         deviceContext(req)
       );
-      res.cookie(config.cookie.name, credentials.refreshToken, refreshCookieOptions());
-      return authSuccess(res, 200, {
+      setRefreshCookie(res, credentials.refreshToken);
+      return authSuccess(req, res, 200, {
         user: credentials.user,
         accessToken: credentials.accessToken,
         csrfToken: credentials.csrfToken,
@@ -112,11 +107,7 @@ export const authController = {
     try {
       // requireRefreshCookie already validated the cookie; attach the sid.
       const sid = req.refreshSession.sid;
-      return res.status(200).json({
-        success: true,
-        data: { csrfToken: csrfService.generate(sid) },
-        meta: {},
-      });
+      return sendSuccess(req, res, { csrfToken: csrfService.generate(sid) });
     } catch (err) {
       next(err);
     }
@@ -125,11 +116,10 @@ export const authController = {
   async refresh(req, res, next) {
     try {
       const result = await authService.refresh(req.refreshSession.rawToken, deviceContext(req));
-      res.cookie(config.cookie.name, result.refreshToken, refreshCookieOptions());
-      return res.status(200).json({
-        success: true,
-        data: { accessToken: result.accessToken, csrfToken: result.csrfToken },
-        meta: {},
+      setRefreshCookie(res, result.refreshToken);
+      return sendSuccess(req, res, {
+        accessToken: result.accessToken,
+        csrfToken: result.csrfToken,
       });
     } catch (err) {
       next(err);
@@ -139,13 +129,7 @@ export const authController = {
   async me(req, res, next) {
     try {
       const user = await authService.me(req.auth.claims);
-      const sanitized = sanitizeUser(user);
-      return res.status(200).json({
-        success: true,
-        data: { user: sanitized },
-        meta: {},
-        user: sanitized,
-      });
+      return sendSuccess(req, res, { user });
     } catch (err) {
       next(err);
     }
@@ -161,8 +145,8 @@ export const authController = {
       } else {
         throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required to log out');
       }
-      res.clearCookie(config.cookie.name, clearCookieOptions());
-      return res.status(200).json({ success: true, data: { ok: true }, meta: {} });
+      clearRefreshCookies(res);
+      return sendSuccess(req, res, { loggedOut: true });
     } catch (err) {
       next(err);
     }
@@ -171,8 +155,8 @@ export const authController = {
   async logoutAll(req, res, next) {
     try {
       await authService.logoutAll({ claims: req.auth.claims }, deviceContext(req));
-      res.clearCookie(config.cookie.name, clearCookieOptions());
-      return res.status(200).json({ success: true, data: { ok: true }, meta: {} });
+      clearRefreshCookies(res);
+      return sendSuccess(req, res, { loggedOut: true, allSessions: true });
     } catch (err) {
       next(err);
     }
@@ -186,8 +170,8 @@ export const authController = {
         req.body.password,
         deviceContext(req)
       );
-      res.clearCookie(config.cookie.name, clearCookieOptions());
-      return res.status(200).json({ success: true, data: result, meta: {} });
+      clearRefreshCookies(res);
+      return sendSuccess(req, res, result);
     } catch (err) {
       next(err);
     }

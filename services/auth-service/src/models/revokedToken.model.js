@@ -11,7 +11,6 @@ const revokedTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-revokedTokenSchema.index({ jti: 1 }, { unique: true });
 revokedTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const RevokedToken = mongoose.model('RevokedToken', revokedTokenSchema);

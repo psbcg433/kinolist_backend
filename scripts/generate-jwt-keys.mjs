@@ -17,12 +17,11 @@ const { privateKey, publicKey } = generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 
-const toSingleLine = (pem) =>
-  pem
-    .replace(/-----BEGIN [A-Z ]+-----/, '')
-    .replace(/-----END [A-Z ]+-----/, '')
-    .replace(/\s+/g, '');
+// dotenv expands `\n` inside double-quoted values back into real newlines.
+// Keep the PEM armor because jsonwebtoken/OpenSSL require a complete PEM key,
+// not the unlabelled base64 body.
+const toEnvValue = (pem) => pem.trimEnd().replace(/\r?\n/g, '\\n');
 
 console.log(`JWT_ALGORITHM=RS256`);
-console.log(`JWT_ACCESS_PRIVATE_KEY="${toSingleLine(privateKey)}"`);
-console.log(`JWT_ACCESS_PUBLIC_KEY="${toSingleLine(publicKey)}"`);
+console.log(`JWT_ACCESS_PRIVATE_KEY="${toEnvValue(privateKey)}"`);
+console.log(`JWT_ACCESS_PUBLIC_KEY="${toEnvValue(publicKey)}"`);

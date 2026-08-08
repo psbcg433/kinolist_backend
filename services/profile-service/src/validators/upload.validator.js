@@ -15,7 +15,13 @@ export function sniffImage(buffer) {
 
 export const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: config.maxImageBytes, files: 2 },
+  limits: {
+    fileSize: config.maxImageBytes,
+    files: 2,
+    fields: 2,
+    fieldSize: 10 * 1024,
+    parts: 4,
+  },
   fileFilter: (_req, file, cb) => {
     if (!IMAGE_MIME_TYPES.has(file.mimetype)) {
       return cb(new ApiError(400, 'INVALID_IMAGE_TYPE', 'Only JPEG, PNG, WEBP or GIF images are allowed'), false);

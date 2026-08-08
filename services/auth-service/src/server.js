@@ -8,6 +8,7 @@ import Session from './models/session.model.js';
 import RefreshToken from './models/refreshToken.model.js';
 import RevokedToken from './models/revokedToken.model.js';
 import AuthLog from './models/authLog.model.js';
+import { startUserEventDispatcher } from './events/dispatchers/userEventDispatcher.js';
 
 async function main() {
   logger.info('starting', {
@@ -17,6 +18,7 @@ async function main() {
   });
 
   let server;
+  let eventDispatcher;
   try {
     await connectDB();
     await Promise.all([
@@ -26,7 +28,27 @@ async function main() {
       RevokedToken.createIndexes(),
       AuthLog.createIndexes(),
     ]);
+    const legacyTwoFactorCleanup = await User.collection.updateMany(
+      {
+        $or: [
+          { twoFASecretEncrypted: { $exists: true } },
+          { pendingTwoFASecretEncrypted: { $exists: true } },
+          { pendingTwoFASecretExpiresAt: { $exists: true } },
+        ],
+      },
+      { $unset: {
+        twoFASecretEncrypted: '',
+        pendingTwoFASecretEncrypted: '',
+        pendingTwoFASecretExpiresAt: '',
+      } }
+    );
+    if (legacyTwoFactorCleanup.modifiedCount > 0) {
+      logger.info('legacy_two_factor_secrets_removed', {
+        users: legacyTwoFactorCleanup.modifiedCount,
+      });
+    }
     await connectRedis();
+    eventDispatcher = startUserEventDispatcher();
     server = app.listen(config.port, () => {
       logger.info('listening', { port: config.port });
     });
@@ -43,6 +65,7 @@ async function main() {
     const force = setTimeout(() => process.exit(1), 10_000);
     force.unref();
     server.close(async () => {
+      await eventDispatcher?.stop();
       await Promise.allSettled([disconnectDB(), disconnectRedis()]);
       logger.info('shutdown_complete', {});
       process.exit(0);

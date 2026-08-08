@@ -11,8 +11,6 @@ export function profileDTO(profile) {
     bio: profile.bio || '',
     profilePic: profile.profilePicUrl || '',
     coverPic: profile.coverPicUrl || '',
-    createdAt: profile.createdAt,
-    updatedAt: profile.updatedAt,
   };
 }
 

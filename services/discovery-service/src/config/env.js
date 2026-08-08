@@ -79,6 +79,10 @@ const config = {
     maxAiResults: optionalInt('MAX_AI_RESULTS', 5),
     maxRecommendResolve: optionalInt('MAX_RECOMMEND_RESOLVE', 8),
   },
+  rateLimit: {
+    aiWindowMs: optionalInt('RATE_LIMIT_AI_WINDOW_MS', 60_000),
+    aiMax: optionalInt('RATE_LIMIT_AI_MAX', 5),
+  },
 };
 
 export { config };

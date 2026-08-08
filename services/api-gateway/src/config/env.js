@@ -31,6 +31,16 @@ function splitList(name, fallback = '') {
     .filter(Boolean);
 }
 
+function trustProxy(name = 'TRUST_PROXY') {
+  const value = optional(name, 'false').trim().toLowerCase();
+  if (!value || value === 'false' || value === '0') return false;
+  if (value === 'true' || value === '*') {
+    throw new Error(`${name} must name trusted proxy hops or CIDR ranges; unrestricted trust is unsafe`);
+  }
+  if (/^\d+$/.test(value)) return Number(value);
+  return value.split(',').map((entry) => entry.trim()).filter(Boolean);
+}
+
 const config = {
   nodeEnv: optional('NODE_ENV', 'development'),
   port: optionalInt('PORT', 5000),
@@ -43,6 +53,7 @@ const config = {
     discovery: required('DISCOVERY_SERVICE_URL'),
   },
   frontendOrigins: splitList('FRONTEND_ORIGINS', 'http://localhost:3000,http://localhost:5173'),
+  trustProxy: trustProxy(),
   maxBodyBytes: optionalInt('MAX_BODY_BYTES', 10 * 1024 * 1024),
   rateLimitWindowMs: optionalInt('RATE_LIMIT_WINDOW_MS', 60_000),
   rateLimitMax: optionalInt('RATE_LIMIT_MAX', 300),

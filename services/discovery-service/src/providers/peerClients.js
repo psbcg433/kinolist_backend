@@ -54,12 +54,15 @@ export const movieClient = {
     if (type) params.set('type', type);
     if (year) params.set('y', String(year));
     const result = await peerRequest({ baseUrl: config.peers.movieServiceUrl, path: `/internal/movie/search?${params.toString()}` });
-    return result?.data || { Search: [], totalResults: '0', Response: 'False' };
+    return {
+      movies: result?.data?.movies || [],
+      total: Number(result?.meta?.total || 0),
+    };
   },
 
   async batch(ids) {
     const result = await peerRequest({ baseUrl: config.peers.movieServiceUrl, path: '/internal/movie/batch', method: 'POST', body: { ids } });
-    return result?.data || {};
+    return result?.data?.moviesById || {};
   },
 };
 
@@ -69,6 +72,6 @@ export const libraryClient = {
       baseUrl: config.peers.libraryServiceUrl,
       path: `/internal/library/${encodeURIComponent(userId)}/items?types=${types.join(',')}`,
     });
-    return result?.data || { favourites: [], watchlist: [] };
+    return result?.data?.itemsByType || { favourites: [], watchlist: [] };
   },
 };

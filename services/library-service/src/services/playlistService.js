@@ -7,7 +7,7 @@ const SYSTEM_TYPES = new Set(['favourites', 'watchlist']);
 const SYSTEM_NAMES = { favourites: 'Favourites', watchlist: 'Watchlist' };
 
 function itemDTO(item) {
-  return { imdbID: item.imdbID, title: item.title || '', posterUrl: item.posterUrl || '' };
+  return { imdbId: item.imdbID, title: item.title || '', posterUrl: item.posterUrl || '' };
 }
 
 export function playlistDTO(playlist, { includeItems = true } = {}) {
@@ -15,26 +15,12 @@ export function playlistDTO(playlist, { includeItems = true } = {}) {
   const items = Array.isArray(playlist.items) ? playlist.items : [];
   return {
     id: String(playlist._id),
-    userId: playlist.userId,
     type: playlist.type,
     name: playlist.name || '',
     description: playlist.description || '',
     isSystem: Boolean(playlist.isSystem),
     itemCount: items.length,
     items: includeItems ? items.map(itemDTO) : undefined,
-  };
-}
-
-export function legacyPlaylistDTO(playlist) {
-  if (!playlist) return null;
-  const items = Array.isArray(playlist.items) ? playlist.items : [];
-  return {
-    _id: String(playlist._id),
-    userId: playlist.userId,
-    type: playlist.type,
-    title: playlist.name || '',
-    isSystem: Boolean(playlist.isSystem),
-    movies: items.map(itemDTO),
   };
 }
 
@@ -72,15 +58,23 @@ export const playlistService = {
     return this.getForUser(userId, (await playlistRepository.findSystem(userId, type))._id);
   },
 
-  async getLegacyByUserAndType(userId, type) {
+  async getLegacyByUserAndType(userId, type, customName) {
     if (SYSTEM_TYPES.has(type)) {
       await this.ensureSystem(userId, type);
       const playlist = await playlistRepository.findSystem(userId, type);
-      return legacyPlaylistDTO(playlist);
+      return playlistDTO(playlist);
     }
-    const playlist = await playlistRepository.findCustomByName(userId, type);
+    const name = type === 'custom' ? String(customName || '').trim() : type;
+    if (!name) {
+      throw new ApiError(
+        400,
+        'CUSTOM_PLAYLIST_NAME_REQUIRED',
+        'Legacy custom playlist lookup requires the name query parameter'
+      );
+    }
+    const playlist = await playlistRepository.findCustomByName(userId, name);
     if (!playlist) throw new ApiError(404, 'PLAYLIST_NOT_FOUND', 'Playlist not found');
-    return legacyPlaylistDTO(playlist);
+    return playlistDTO(playlist);
   },
 
   async createCustom(userId, { name, description }) {
@@ -101,12 +95,12 @@ export const playlistService = {
   async createLegacy(userId, { type, title }) {
     if (SYSTEM_TYPES.has(type)) {
       const playlist = await this.ensureSystem(userId, type);
-      return legacyPlaylistDTO({ ...playlist, _id: playlist.id });
+      return playlist;
     }
     const existing = await playlistRepository.findCustomByName(userId, title);
-    if (existing) return legacyPlaylistDTO(existing);
+    if (existing) return playlistDTO(existing);
     const playlist = await this.createCustom(userId, { name: title, description: '' });
-    return legacyPlaylistDTO({ ...playlist, _id: playlist.id });
+    return playlist;
   },
 
   async updateCustom(userId, playlistId, { name, description }) {

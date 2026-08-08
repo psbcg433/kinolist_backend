@@ -1,10 +1,14 @@
 import { authService } from '../services/authService.js';
-import { validateTwoFactorSetupVerify, validateTwoFactorReset } from '../validators/auth.validator.js';
+import {
+  validateTwoFactorSetup,
+  validateTwoFactorSetupVerify,
+  validateTwoFactorReset,
+} from '../validators/auth.validator.js';
+import { sendSuccess } from '../utils/response.js';
 
 function deviceContext(req) {
-  const forwarded = req.headers['x-forwarded-for'];
   return {
-    ip: forwarded ? String(forwarded).split(',')[0].trim() : req.socket.remoteAddress || '',
+    ip: req.ip || req.socket.remoteAddress || '',
     device: (req.headers['user-agent'] || '').slice(0, 300),
   };
 }
@@ -12,8 +16,13 @@ function deviceContext(req) {
 export const twoFactorController = {
   async setup(req, res, next) {
     try {
-      const result = await authService.twoFactorSetup(String(req.auth.user._id), deviceContext(req));
-      res.status(200).json({ success: true, data: result, meta: {}, qr: result.qr });
+      validateTwoFactorSetup(req.body);
+      const result = await authService.twoFactorSetup(
+        String(req.auth.user._id),
+        req.body.password,
+        deviceContext(req)
+      );
+      sendSuccess(req, res, result);
     } catch (err) {
       next(err);
     }
@@ -22,8 +31,14 @@ export const twoFactorController = {
   async setupVerify(req, res, next) {
     try {
       validateTwoFactorSetupVerify(req.body);
-      await authService.twoFactorSetupVerify(String(req.auth.user._id), req.body.code, deviceContext(req));
-      res.status(200).json({ success: true, data: { ok: true }, meta: {} });
+      await authService.twoFactorSetupVerify(
+        String(req.auth.user._id),
+        req.auth.claims.sid,
+        req.body.challengeId,
+        req.body.code,
+        deviceContext(req)
+      );
+      sendSuccess(req, res, { enabled: true });
     } catch (err) {
       next(err);
     }
@@ -32,8 +47,13 @@ export const twoFactorController = {
   async reset(req, res, next) {
     try {
       validateTwoFactorReset(req.body);
-      await authService.twoFactorReset(String(req.auth.user._id), req.body.password, deviceContext(req));
-      res.status(200).json({ success: true, data: { ok: true }, meta: {} });
+      await authService.twoFactorReset(
+        String(req.auth.user._id),
+        req.auth.claims.sid,
+        req.body.password,
+        deviceContext(req)
+      );
+      sendSuccess(req, res, { enabled: false });
     } catch (err) {
       next(err);
     }

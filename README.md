@@ -5,8 +5,8 @@ deployable Node/Express microservices. Each service owns its own Mongo
 database and communicates with peers strictly over internal HTTP (guarded by
 `INTERNAL_API_KEY`) or via Redis Streams domain events.
 
-> Backend only. The legacy frontend API contracts are kept compatible where
-> practical, but no code from the legacy repo is copied in.
+> The canonical contract is versioned under `/api/v1`. Temporary unversioned
+> aliases remain for compatibility; the sibling CineAI frontend consumes v1.
 
 ## Services
 
@@ -20,7 +20,8 @@ database and communicates with peers strictly over internal HTTP (guarded by
 | `discovery-service`| 5005 | `kinolist_discovery`| Search history, feeds, AI search, recommendations           |
 
 Internal DNS on the Docker network is `http://<service-name>:<port>`; only the
-gateway (5000) is exposed to the host.
+gateway (5000) is exposed to the host. Local email is captured by Mailpit,
+whose UI is bound to `127.0.0.1:8025`.
 
 ## Quick start
 
@@ -30,7 +31,8 @@ node scripts/generate-jwt-keys.mjs   # RS256 key pair → copy into .env
 docker compose up --build
 ```
 
-The API is then available at `http://localhost:5000/api`.
+The API is then available at `http://localhost:5000/api/v1` and local 2FA
+emails at `http://localhost:8025`.
 
 ### Generating the JWT keys
 
@@ -45,7 +47,7 @@ instead.
 See `.env.example` for the full list. At minimum:
 
 - `JWT_ALGORITHM` (+ RS256 keys or HS256 secret), `JWT_ISSUER`, `JWT_AUDIENCE`
-- `CSRF_SECRET`, `TOTP_ENCRYPTION_KEY` (auth-only, 32-byte keys for the 2FA secret)
+- `CSRF_SECRET`, `TOTP_ENCRYPTION_KEY` (auth-only; the latter now peppers short-lived 2FA code HMACs)
 - `INTERNAL_API_KEY` (shared, trusted internal HTTP)
 - `OMDB_API_KEY`, `OPENROUTER_API_KEY`, `TASTEDIVE_API_KEY`,
   `CLOUDINARY_CLOUD_NAME`/`API_KEY`/`API_SECRET`
@@ -59,7 +61,7 @@ docker compose run --rm gateway    npm test   # or, per service:
 for s in services/*; do (cd "$s" && npm test) done
 ```
 
-All six services pass their suites (37 tests total). Auth and gateway run
+All six services pass their suites. Auth and gateway run
 `node --test` directly; profile/library/movie/discovery run
 `node --import ./tests/env-setup.mjs` over each test file (they are
 integration tests against ephemeral Mongo/Redis).

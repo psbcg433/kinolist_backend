@@ -38,7 +38,8 @@ async function checkRevocation(req) {
     }
   } catch (err) {
     if (err instanceof ApiError) throw err;
-    logger.warn('auth_redis_check_failed', { message: err.message });
+    logger.error('auth_redis_check_failed', { message: err.message });
+    throw new ApiError(503, 'AUTHORIZATION_UNAVAILABLE', 'Authorization state is temporarily unavailable');
   }
 }
 
@@ -89,11 +90,10 @@ export async function requireAuthIfPresent(req, _res, next) {
     if (!token) return next();
     try {
       req.auth = claimsToAuth(verifyAccessToken(token));
-      await checkRevocation(req);
-    } catch (err) {
-      if (err instanceof ApiError) throw err;
-      logger.warn('optional_auth_failed', { message: err.message });
+    } catch {
+      throw new ApiError(401, 'INVALID_ACCESS_TOKEN', 'Invalid or expired access token');
     }
+    await checkRevocation(req);
     next();
   } catch (err) {
     next(err);

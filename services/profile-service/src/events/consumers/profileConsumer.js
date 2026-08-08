@@ -1,14 +1,34 @@
-import { getRedis } from '../config/redis.js';
-import { profileService } from '../services/profileService.js';
-import { logger } from '../utils/logger.js';
+import { getRedis } from '../../config/redis.js';
+import { config } from '../../config/env.js';
+import { profileService } from '../../services/profileService.js';
+import { logger } from '../../utils/logger.js';
 
-const STREAM = 'kinolist:stream:domain-events';
+const STREAM = config.redis.stream;
 const GROUP = 'profile-consumer';
 const CONSUMER = `profile-worker-${process.pid}`;
-const DLQ = 'kinolist:stream:domain-events:dlq';
+const DLQ = config.redis.dlq;
 
 const BATCH_SIZE = 10;
 const CLAIM_ATTEMPTS = 3;
+
+export function parseStreamEntry(fields) {
+  const parsed = {};
+  for (let i = 0; i < fields.length; i += 2) parsed[fields[i]] = fields[i + 1];
+
+  if (parsed.event) {
+    const envelope = JSON.parse(parsed.event);
+    return {
+      type: envelope.eventType,
+      version: Number(envelope.schemaVersion),
+      data: envelope.payload || {},
+      envelope,
+    };
+  }
+
+  // Backward compatibility for any events written in the earlier split-field
+  // representation.
+  return { type: parsed.type, version: Number(parsed.version), data: JSON.parse(parsed.data || '{}') };
+}
 
 function handleProfileEvent(event) {
   const { type, data, version } = event;
@@ -30,9 +50,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function moveToDlq(message) {
+async function moveToDlq(redis, message) {
   try {
-    const redis = getRedis();
     const body = message.message;
     await redis.xadd(DLQ, '*', 'type', body.type, 'version', String(body.version), 'data', JSON.stringify(body.data));
     await redis.xack(STREAM, GROUP, message.id);
@@ -42,9 +61,26 @@ async function moveToDlq(message) {
   }
 }
 
-export async function consumeProfileEvents({ enabled = true, pollIntervalMs = 1000, shutdownSignal } = {}) {
-  const redis = getRedis();
+export async function consumeProfileEvents({
+  enabled = true,
+  pollIntervalMs = 1000,
+  shutdownSignal,
+  redisClient = null,
+} = {}) {
+  if (!enabled) return { stop: async () => {} };
+
+  // Blocking XREADGROUP commands must never share the request/cache client.
+  // A dedicated connection prevents auth revocation and readiness commands
+  // from queueing behind a five-second stream read.
+  const ownsRedis = !redisClient;
+  const redis = redisClient || getRedis().duplicate({ lazyConnect: true, maxRetriesPerRequest: null });
+  if (ownsRedis) {
+    redis.on('error', (err) => logger.error('consumer_redis_error', { message: err.message }));
+    await redis.connect();
+  }
+
   let running = enabled;
+  let stopped = false;
 
   await redis.xgroup('CREATE', STREAM, GROUP, '0', 'MKSTREAM').catch(() => {});
 
@@ -56,15 +92,13 @@ export async function consumeProfileEvents({ enabled = true, pollIntervalMs = 10
         for (const entry of pending) {
           const id = entry[0];
           const fields = entry[1] || [];
-          const parsed = {};
-          for (let i = 0; i < fields.length; i += 2) parsed[fields[i]] = fields[i + 1];
-          const event = { type: parsed.type, version: Number(parsed.version), data: JSON.parse(parsed.data || '{}') };
+          const event = parseStreamEntry(fields);
           try {
             await handleProfileEvent(event);
             await redis.xack(STREAM, GROUP, id);
           } catch (err) {
             logger.error('stale_event_failed', { messageId: id, type: event.type, message: err.message });
-            await moveToDlq({ id, message: event });
+            await moveToDlq(redis, { id, message: event });
           }
         }
       } catch (err) {
@@ -85,44 +119,53 @@ export async function consumeProfileEvents({ enabled = true, pollIntervalMs = 10
         for (const entry of entries) {
           const id = entry[0];
           const fields = entry[1] || [];
-          const parsed = {};
-          for (let i = 0; i < fields.length; i += 2) parsed[fields[i]] = fields[i + 1];
-
           let event;
           try {
-            event = { type: parsed.type, version: Number(parsed.version), data: JSON.parse(parsed.data || '{}') };
+            event = parseStreamEntry(fields);
             await handleProfileEvent(event);
             await redis.xack(STREAM, GROUP, id);
             logger.debug('event_processed', { messageId: id, type: event.type });
           } catch (err) {
-            logger.error('event_processing_failed', { messageId: id, type: parsed.type, message: err.message });
-            if (event) await moveToDlq({ id, message: event });
+            logger.error('event_processing_failed', { messageId: id, type: event?.type, message: err.message });
+            if (event) await moveToDlq(redis, { id, message: event });
             else await redis.xack(STREAM, GROUP, id);
           }
         }
       }
     } catch (err) {
-      logger.warn('event_poll_failed', { message: err.message });
+      if (running) logger.warn('event_poll_failed', { message: err.message });
+      throw err;
     }
   }
 
   logger.info('profile_event_consumer_started', { stream: STREAM, group: GROUP });
 
-  const timer = setInterval(() => {
-    if (running) void poll();
-  }, pollIntervalMs);
-  timer.unref();
+  // Exactly one poll is active at a time. The previous setInterval started a
+  // new blocking read every second and built an unbounded command queue.
+  const loopPromise = (async () => {
+    while (running) {
+      try {
+        await poll();
+      } catch {
+        if (running) await sleep(pollIntervalMs);
+      }
+    }
+  })();
 
-  if (shutdownSignal) {
-    const stop = () => {
-      if (!running) return;
-      running = false;
-      clearInterval(timer);
-      logger.info('profile_event_consumer_stopped', {});
-    };
-    if (typeof shutdownSignal === 'function') shutdownSignal.then(stop);
-    else shutdownSignal.on('SIGTERM', stop);
+  async function stop() {
+    if (stopped) return;
+    stopped = true;
+    running = false;
+    // disconnect() immediately releases a pending BLOCK read.
+    if (ownsRedis) redis.disconnect();
+    await loopPromise.catch(() => {});
+    logger.info('profile_event_consumer_stopped', {});
   }
 
-  return { stop: () => { running = false; clearInterval(timer); } };
+  if (shutdownSignal) {
+    if (typeof shutdownSignal.then === 'function') shutdownSignal.then(() => void stop());
+    else if (typeof shutdownSignal.on === 'function') shutdownSignal.on('SIGTERM', () => void stop());
+  }
+
+  return { stop };
 }

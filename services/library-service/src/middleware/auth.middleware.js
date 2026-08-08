@@ -38,9 +38,8 @@ async function checkRevocation(req) {
     }
   } catch (err) {
     if (err instanceof ApiError) throw err;
-    // Fail-open on Redis outage for the revocation cache. JWTs are still
-    // cryptographically verified. Documented in docs/architecture.md.
-    logger.warn('auth_redis_check_failed', { message: err.message });
+    logger.error('auth_redis_check_failed', { message: err.message });
+    throw new ApiError(503, 'AUTHORIZATION_UNAVAILABLE', 'Authorization state is temporarily unavailable');
   }
 }
 

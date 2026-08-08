@@ -34,8 +34,8 @@ export async function publishEvent(envelope) {
   }
 }
 
-export async function publishUserRegistered(user, { correlationId = null } = {}, extra = {}) {
-  const envelope = buildEnvelope(
+export function buildUserRegisteredEvent(user, { correlationId = null } = {}, extra = {}) {
+  return buildEnvelope(
     'USER_REGISTERED.v1',
     'auth-service',
     {
@@ -45,15 +45,13 @@ export async function publishUserRegistered(user, { correlationId = null } = {},
     },
     correlationId
   );
-  return publishEvent(envelope);
 }
 
-export async function publishUserDeleted(userId, { correlationId = null } = {}) {
-  const envelope = buildEnvelope(
+export function buildUserDeletedEvent(userId, { correlationId = null } = {}) {
+  return buildEnvelope(
     'USER_DELETED.v1',
     'auth-service',
     { userId: String(userId) },
     correlationId
   );
-  return publishEvent(envelope);
 }

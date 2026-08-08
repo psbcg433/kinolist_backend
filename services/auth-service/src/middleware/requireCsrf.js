@@ -62,3 +62,9 @@ export function requireRefreshCookieIfAnonymous(req, res, next) {
   if (req.auth) return next();
   return requireRefreshCookie(req, res, next);
 }
+
+/** Applies cookie-bound CSRF validation only when logout uses refresh-cookie auth. */
+export function requireCsrfCookieIfAnonymous(req, res, next) {
+  if (req.auth) return next();
+  return requireCsrfCookie()(req, res, next);
+}

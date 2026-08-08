@@ -31,17 +31,21 @@ services:
       MOVIE_SERVICE_URL: http://movie-service:5004
       DISCOVERY_SERVICE_URL: http://discovery-service:5005
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000,http://localhost:5173}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       JWT_ACCESS_PUBLIC_KEY: ${JWT_ACCESS_PUBLIC_KEY}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-RS256}
       JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-10485760}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      UPSTREAM_TIMEOUT_MS: ${UPSTREAM_TIMEOUT_MS:-15000}
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -63,17 +67,40 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
       CSRF_SECRET: ${CSRF_SECRET}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY}
+      TWO_FACTOR_CODE_TTL_SECONDS: ${TWO_FACTOR_CODE_TTL_SECONDS:-300}
+      TWO_FACTOR_CODE_MAX_ATTEMPTS: ${TWO_FACTOR_CODE_MAX_ATTEMPTS:-5}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-false}
+      SMTP_TLS_REJECT_UNAUTHORIZED: ${SMTP_TLS_REJECT_UNAUTHORIZED:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-KinoList <no-reply@kinolist.local>}
       COOKIE_NAME: ${COOKIE_NAME:-kinolist_refresh}
-      COOKIE_PATH: ${COOKIE_PATH:-/api/auth}
+      COOKIE_PATH: ${COOKIE_PATH:-/api}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-none}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      REDIS_STREAM: ${REDIS_STREAM:-kinolist:stream:domain-events}
+      REDIS_DLQ: ${REDIS_DLQ:-kinolist:stream:domain-events:dlq}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_LOGIN_MAX: ${RATE_LIMIT_LOGIN_MAX:-10}
+      RATE_LIMIT_REGISTER_MAX: ${RATE_LIMIT_REGISTER_MAX:-5}
+      RATE_LIMIT_2FA_MAX: ${RATE_LIMIT_2FA_MAX:-10}
+      RATE_LIMIT_REFRESH_MAX: ${RATE_LIMIT_REFRESH_MAX:-30}
+      RATE_LIMIT_DELETE_ACCOUNT_MAX: ${RATE_LIMIT_DELETE_ACCOUNT_MAX:-5}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
     depends_on:
       mongo-auth:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -94,13 +121,16 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
       JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      REDIS_STREAM: ${REDIS_STREAM:-kinolist:stream:domain-events}
+      REDIS_DLQ: ${REDIS_DLQ:-kinolist:stream:domain-events:dlq}
+      MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-5242880}
     depends_on:
       mongo-profile:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5002/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5002/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -119,13 +149,16 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      REDIS_STREAM: ${REDIS_STREAM:-kinolist:stream:domain-events}
+      REDIS_DLQ: ${REDIS_DLQ:-kinolist:stream:domain-events:dlq}
+      MAX_ITEMS_PER_PLAYLIST: ${MAX_ITEMS_PER_PLAYLIST:-500}
     depends_on:
       mongo-library:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5003/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5003/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -145,13 +178,16 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
       JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
+      OMDB_BASE_URL: ${OMDB_BASE_URL:-https://www.omdbapi.com}
+      OMDB_TIMEOUT_MS: ${OMDB_TIMEOUT_MS:-8000}
+      MOVIE_CACHE_TTL_SECONDS: ${MOVIE_CACHE_TTL_SECONDS:-86400}
     depends_on:
       mongo-movie:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5004/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5004/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -175,13 +211,27 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-kinolist-auth}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kinolist-api}
       LIBRARY_SERVICE_URL: http://library-service:5003
+      INTERNAL_TIMEOUT_MS: ${INTERNAL_TIMEOUT_MS:-8000}
+      TASTEDIVE_BASE_URL: ${TASTEDIVE_BASE_URL:-https://tastedive.com/api/similar}
+      TASTEDIVE_TIMEOUT_MS: ${TASTEDIVE_TIMEOUT_MS:-8000}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1/chat/completions}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-15000}
+      REDIS_STREAM: ${REDIS_STREAM:-kinolist:stream:domain-events}
+      REDIS_DLQ: ${REDIS_DLQ:-kinolist:stream:domain-events:dlq}
+      DISCOVERY_FEED_CACHE_TTL: ${DISCOVERY_FEED_CACHE_TTL:-21600}
+      DISCOVERY_RECOMMEND_CACHE_TTL: ${DISCOVERY_RECOMMEND_CACHE_TTL:-1800}
+      SEARCH_HISTORY_CAP: ${SEARCH_HISTORY_CAP:-50}
+      MAX_AI_RESULTS: ${MAX_AI_RESULTS:-5}
+      RATE_LIMIT_AI_WINDOW_MS: ${RATE_LIMIT_AI_WINDOW_MS:-60000}
+      RATE_LIMIT_AI_MAX: ${RATE_LIMIT_AI_MAX:-5}
+      MAX_RECOMMEND_RESOLVE: ${MAX_RECOMMEND_RESOLVE:-8}
     depends_on:
       mongo-discovery:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:5005/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5005/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -251,6 +301,23 @@ services:
       - kinolist-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # Local SMTP sink. Open http://localhost:8025 to inspect 2FA messages.
+  # Production deployments should point SMTP_* at their managed email relay.
+  mailpit:
+    image: axllent/mailpit:v1.30.0
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    environment:
+      MP_MAX_MESSAGES: ${MAILPIT_MAX_MESSAGES:-500}
+      MP_SMTP_AUTH_ACCEPT_ANY: "0"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "0"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 5

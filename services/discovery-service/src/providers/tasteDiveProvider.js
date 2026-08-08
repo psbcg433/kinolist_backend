@@ -6,10 +6,6 @@ function normalizeResult(result) {
   return {
     name: result.Name || result.name || '',
     type: result.Type || result.type || '',
-    wTeaser: result.wTeaser || '',
-    wUrl: result.wUrl || '',
-    yUrl: result.yUrl || '',
-    yID: result.yID || '',
   };
 }
 

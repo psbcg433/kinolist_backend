@@ -9,11 +9,14 @@ import { errorHandler } from './middleware/errorHandler.js';
 import healthRouter from './routes/health.js';
 import { proxyRoutes } from './routes/proxy.js';
 import { logger } from './utils/logger.js';
-import { isProduction } from './config/env.js';
+import { config, isProduction } from './config/env.js';
+import { ApiError } from './utils/ApiError.js';
+import { sendSuccess } from './utils/response.js';
 
 const app = express();
 
 app.disable('x-powered-by');
+app.set('trust proxy', config.trustProxy);
 if (isProduction()) {
   app.use(helmet());
 }
@@ -34,18 +37,12 @@ app.use((req, res, next) => {
 
 app.use('/health', healthRouter);
 
-app.get('/', (_req, res) => res.status(200).json({ success: true, data: { service: 'kinolist-api-gateway' }, meta: {} }));
+app.get('/', (req, res) => sendSuccess(req, res, { service: 'kinolist-api-gateway' }));
 
 proxyRoutes(app);
 
 // No route matched upstream — 404 in gateway envelope.
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: { code: 'NOT_FOUND', message: 'Route not found', details: [] },
-    requestId: req.id || null,
-  });
-});
+app.use((_req, _res, next) => next(new ApiError(404, 'NOT_FOUND', 'Route not found')));
 
 app.use(errorHandler);
 

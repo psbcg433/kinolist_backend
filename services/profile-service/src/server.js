@@ -1,6 +1,6 @@
 import { config } from './config/env.js';
 import { connectDB, disconnectDB } from './config/db.js';
-import { connectRedis } from './config/redis.js';
+import { connectRedis, disconnectRedis } from './config/redis.js';
 import { createApp } from './app.js';
 import { consumeProfileEvents } from './events/consumers/profileConsumer.js';
 import { logger } from './utils/logger.js';
@@ -18,11 +18,12 @@ async function main() {
 
   async function shutdown(signal) {
     logger.info('profile_service_shutting_down', { signal });
-    consumer.stop();
     server.close(async () => {
       try {
-        await disconnectDB();
+        await consumer.stop();
+        await disconnectRedis();
       } finally {
+        await disconnectDB();
         process.exit(0);
       }
     });

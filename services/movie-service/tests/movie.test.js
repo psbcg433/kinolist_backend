@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { validateImdbID, validateBatchIds, validateSearchQuery } from '../src/validators/movie.validator.js';
 import { ApiError } from '../src/utils/ApiError.js';
+import { movieDetailDTO, movieSearchDTO } from '../src/utils/movieDto.js';
 
 function expectError(fn, status, message) {
   try {
@@ -47,6 +48,56 @@ const tests = {
     expectError(() => validateSearchQuery({ q: 'x'.repeat(121) }), 400, 'long q');
     expectError(() => validateSearchQuery({ q: 'x', type: 'nope' }), 400, 'bad type');
     expectError(() => validateSearchQuery({ q: 'x', y: 'abcd' }), 400, 'bad year');
+  },
+
+  'movie DTO whitelists and normalizes provider data': () => {
+    assert.deepEqual(movieDetailDTO({
+      imdbID: 'tt1375666',
+      Title: 'Inception',
+      Year: '2010',
+      Type: 'movie',
+      Poster: 'https://poster',
+      Runtime: '148 min',
+      Genre: 'Action, Sci-Fi',
+      Director: 'Christopher Nolan',
+      Writer: 'Christopher Nolan',
+      Actors: 'Leonardo DiCaprio, Joseph Gordon-Levitt',
+      Plot: 'A dream heist.',
+      Language: 'English, Japanese',
+      Country: 'United States, United Kingdom',
+      imdbRating: '8.8',
+      BoxOffice: '$292,587,330',
+      Ratings: [{ Source: 'secret-provider-shape' }],
+      Response: 'True',
+      Website: 'https://unused',
+    }), {
+      imdbId: 'tt1375666',
+      title: 'Inception',
+      year: '2010',
+      type: 'movie',
+      posterUrl: 'https://poster',
+      runtime: '148 min',
+      genres: ['Action', 'Sci-Fi'],
+      director: 'Christopher Nolan',
+      writers: ['Christopher Nolan'],
+      actors: ['Leonardo DiCaprio', 'Joseph Gordon-Levitt'],
+      plot: 'A dream heist.',
+      languages: ['English', 'Japanese'],
+      countries: ['United States', 'United Kingdom'],
+      imdbRating: '8.8',
+      boxOffice: '$292,587,330',
+    });
+  },
+
+  'movie search DTO removes provider response flags': () => {
+    assert.deepEqual(movieSearchDTO({
+      Search: [{ imdbID: 'tt1375666', Title: 'Inception', Year: '2010', Type: 'movie', Poster: 'N/A' }],
+      totalResults: '1',
+      Response: 'True',
+    }), {
+      movies: [{ imdbId: 'tt1375666', title: 'Inception', year: '2010', type: 'movie', posterUrl: null }],
+      total: 1,
+    });
   },
 };
 

@@ -31,6 +31,14 @@ export const sessionRepository = {
     );
   },
 
+  async revokeAllExcept(userId, sessionId, reason) {
+    const now = new Date();
+    return Session.updateMany(
+      { userId, _id: { $ne: sessionId }, revokedAt: null },
+      { $set: { revokedAt: now, revokeReason: reason } }
+    );
+  },
+
   async touch(id) {
     return Session.updateOne({ _id: id }, { $set: { lastSeenAt: new Date() } });
   },

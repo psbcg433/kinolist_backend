@@ -4,8 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
 
 function clientKey(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  return forwarded ? String(forwarded).split(',')[0].trim() : req.socket.remoteAddress || 'unknown';
+  return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
 export function rateLimit({ namespace, max }) {
@@ -25,7 +24,10 @@ export function rateLimit({ namespace, max }) {
       return next();
     } catch (err) {
       logger.warn('rate_limit_redis_failure', { namespace, message: err.message });
-      return next();
+      // Authentication throttles are part of the credential boundary. If the
+      // shared counter is unavailable, fail closed instead of exposing login,
+      // registration, refresh, or 2FA endpoints to unbounded attempts.
+      return next(new ApiError(503, 'RATE_LIMIT_UNAVAILABLE', 'Authentication is temporarily unavailable'));
     }
   };
 }

@@ -1,4 +1,4 @@
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError, errorBody } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
 
 export function errorHandler(err, req, res, _next) {
@@ -28,17 +28,10 @@ export function errorHandler(err, req, res, _next) {
     });
   }
 
-  const isClientError = status >= 400 && status < 500;
-  res.status(status).json({
-    success: false,
-    error: {
-      code,
-      message: isClientError ? message : 'Internal server error',
-      details: err.details || [],
-    },
-    requestId: req.id || null,
-    message: isClientError ? message : 'Internal server error',
-  });
+  err.status = status;
+  err.code = code;
+  err.message = message;
+  res.status(status).json(errorBody(err, req.id));
 }
 
 export { ApiError };

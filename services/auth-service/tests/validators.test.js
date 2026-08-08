@@ -5,6 +5,7 @@ import {
   validateRegister,
   validateLogin,
   validateTwoFactorLogin,
+  validateTwoFactorSetup,
   validateTwoFactorSetupVerify,
   validateDeleteAccount,
 } from '../src/validators/auth.validator.js';
@@ -40,9 +41,16 @@ test('2fa login requires challengeId and 6-digit code', () => {
   expectValidationError(() => validateTwoFactorLogin({ code: '123456' }));
 });
 
-test('setup verify requires 6-digit code', () => {
-  assert.doesNotThrow(() => validateTwoFactorSetupVerify({ code: '123456' }));
-  expectValidationError(() => validateTwoFactorSetupVerify({ code: '12a456' }));
+test('setup verify requires challengeId and 6-digit code', () => {
+  assert.doesNotThrow(() => validateTwoFactorSetupVerify({ challengeId: 'abc', code: '123456' }));
+  expectValidationError(() => validateTwoFactorSetupVerify({ challengeId: 'abc', code: '12a456' }));
+  expectValidationError(() => validateTwoFactorSetupVerify({ code: '123456' }));
+});
+
+test('2fa setup requires current password reauthentication', () => {
+  assert.doesNotThrow(() => validateTwoFactorSetup({ password: 'my-password' }));
+  expectValidationError(() => validateTwoFactorSetup({}));
+  expectValidationError(() => validateTwoFactorSetup({ password: '' }));
 });
 
 test('delete account requires a password', () => {

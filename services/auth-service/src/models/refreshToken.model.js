@@ -16,7 +16,6 @@ const refreshTokenSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-refreshTokenSchema.index({ tokenHash: 1 }, { unique: true });
 refreshTokenSchema.index({ familyId: 1 });
 refreshTokenSchema.index({ sessionId: 1 });
 refreshTokenSchema.index({ userId: 1 });
