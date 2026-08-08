@@ -54,17 +54,7 @@ See `.env.example` for the full list. At minimum:
 - `COOKIE_SECURE=false` for local HTTP, `true` behind TLS
 - `FRONTEND_ORIGINS` for gateway CORS
 
-## Tests
 
-```bash
-docker compose run --rm gateway    npm test   # or, per service:
-for s in services/*; do (cd "$s" && npm test) done
-```
-
-All six services pass their suites. Auth and gateway run
-`node --test` directly; profile/library/movie/discovery run
-`node --import ./tests/env-setup.mjs` over each test file (they are
-integration tests against ephemeral Mongo/Redis).
 
 ## Documentation
 
