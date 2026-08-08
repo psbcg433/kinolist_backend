@@ -17,11 +17,7 @@ tmp/
 test-output/
 **/tests/
 tests/
-docs/*
-!docs/postman/
-docs/postman/*
-!docs/postman/*.json
-!docs/postman/README.md
+docs/
 
 # OS / editor
 .DS_Store
@@ -32,4 +28,3 @@ Thumbs.db
 # Local key material
 *.pem
 *.key
-
