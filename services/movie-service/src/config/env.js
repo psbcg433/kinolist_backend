@@ -50,6 +50,11 @@ const config = {
   },
   cache: {
     ttlSeconds: optionalInt('MOVIE_CACHE_TTL_SECONDS', 86400),
+    dbMaxAgeSeconds: optionalInt('MOVIE_DB_MAX_AGE_SECONDS', 604800),
+    staleIfErrorSeconds: optionalInt('MOVIE_STALE_IF_ERROR_SECONDS', 3600),
+  },
+  limits: {
+    batchConcurrency: optionalInt('MOVIE_BATCH_CONCURRENCY', 4),
   },
   jwt: {
     algorithm: jwtAlgorithm,

@@ -20,6 +20,26 @@ export function errorHandler(err, req, res, _next) {
       err.status = 413;
       err.code = 'PAYLOAD_TOO_LARGE';
       err.message = 'Uploaded file exceeds the size limit';
+    } else if (err.code === 'LIMIT_PART_COUNT') {
+      status = 400;
+      err.status = 400;
+      err.code = 'MULTIPART_LIMIT_EXCEEDED';
+      err.message = 'Upload contains too many multipart sections';
+    } else if (err.code === 'LIMIT_FILE_COUNT') {
+      status = 400;
+      err.status = 400;
+      err.code = 'TOO_MANY_FILES';
+      err.message = 'Upload contains too many files';
+    } else if (err.code === 'LIMIT_FIELD_COUNT') {
+      status = 400;
+      err.status = 400;
+      err.code = 'TOO_MANY_FIELDS';
+      err.message = 'Upload contains too many fields';
+    } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      status = 400;
+      err.status = 400;
+      err.code = 'UNEXPECTED_FILE_FIELD';
+      err.message = 'Upload contains an unexpected file field';
     }
   }
 

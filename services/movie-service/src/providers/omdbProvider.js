@@ -42,8 +42,8 @@ export async function fetchOmdb(imdbID) {
   return body;
 }
 
-export async function searchOmdb(query, { type, year } = {}) {
-  const params = { s: query };
+export async function searchOmdb(query, { type, year, page = 1 } = {}) {
+  const params = { s: query, page: String(page) };
   if (type) params.type = type;
   if (year) params.y = String(year);
   const body = await request(params, `search:${query}`);

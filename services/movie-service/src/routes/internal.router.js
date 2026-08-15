@@ -7,6 +7,7 @@ const router = Router();
 router.use(requireInternal);
 
 router.get('/movie/search', internalController.search);
+router.get('/movie/catalog', internalController.catalog);
 router.get('/movie/:imdbID', internalController.getById);
 router.post('/movie/batch', internalController.batch);
 

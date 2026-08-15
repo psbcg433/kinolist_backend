@@ -39,4 +39,12 @@ export const feedController = {
       next(err);
     }
   },
+
+  async topRated(req, res, next) {
+    try {
+      sendMovieResult(req, res, await feedService.topRated());
+    } catch (err) {
+      next(err);
+    }
+  },
 };

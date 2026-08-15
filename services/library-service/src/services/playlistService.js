@@ -10,7 +10,7 @@ function itemDTO(item) {
   return { imdbId: item.imdbID, title: item.title || '', posterUrl: item.posterUrl || '' };
 }
 
-export function playlistDTO(playlist, { includeItems = true } = {}) {
+export function playlistDTO(playlist, { includeItems = true, includeItemIds = false } = {}) {
   if (!playlist) return null;
   const items = Array.isArray(playlist.items) ? playlist.items : [];
   return {
@@ -21,6 +21,7 @@ export function playlistDTO(playlist, { includeItems = true } = {}) {
     isSystem: Boolean(playlist.isSystem),
     itemCount: items.length,
     items: includeItems ? items.map(itemDTO) : undefined,
+    itemIds: includeItemIds ? items.map((item) => item.imdbID) : undefined,
   };
 }
 
@@ -31,7 +32,7 @@ function escapeRegExp(value) {
 export const playlistService = {
   async listForUser(userId) {
     const playlists = await playlistRepository.listForUser(userId);
-    return playlists.map((p) => playlistDTO(p, { includeItems: false }));
+    return playlists.map((p) => playlistDTO(p, { includeItems: false, includeItemIds: true }));
   },
 
   async ensureSystem(userId, type) {

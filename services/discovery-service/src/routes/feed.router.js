@@ -10,5 +10,6 @@ router.get('/trending', feedController.trending);
 router.get('/genre/:genre', feedController.byGenre);
 router.get('/ongoing', feedController.ongoing);
 router.get('/discover', feedController.discover);
+router.get('/top-rated', feedController.topRated);
 
 export default router;

@@ -3,15 +3,16 @@ import { validateSearchQuery } from '../validators/discovery.validator.js';
 import { sendSuccess } from '../utils/response.js';
 
 function sendMovieResult(req, res, result) {
-  return sendSuccess(req, res, { movies: result.movies || [] }, { meta: { total: result.total || 0 } });
+  const { movies = [], ...meta } = result;
+  return sendSuccess(req, res, { movies }, { meta });
 }
 
 export const searchController = {
   async normal(req, res, next) {
     try {
-      const query = validateSearchQuery(req.query);
+      const search = validateSearchQuery(req.query);
       const userId = req.auth?.userId || null;
-      const result = await searchService.normal(query, userId);
+      const result = await searchService.normal(search, userId);
       sendMovieResult(req, res, result);
     } catch (err) {
       next(err);
@@ -20,9 +21,9 @@ export const searchController = {
 
   async ai(req, res, next) {
     try {
-      const query = validateSearchQuery(req.query);
+      const search = validateSearchQuery(req.query);
       const userId = req.auth?.userId || null;
-      const result = await searchService.ai(query, userId);
+      const result = await searchService.ai(search, userId);
       sendMovieResult(req, res, result);
     } catch (err) {
       next(err);

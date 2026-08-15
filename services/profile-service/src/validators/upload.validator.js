@@ -20,7 +20,9 @@ export const imageUpload = multer({
     files: 2,
     fields: 2,
     fieldSize: 10 * 1024,
-    parts: 4,
+    // Busboy emits `partsLimit` when this boundary is reached, so four valid
+    // form parts (two text fields + two files) require one slot of headroom.
+    parts: 5,
   },
   fileFilter: (_req, file, cb) => {
     if (!IMAGE_MIME_TYPES.has(file.mimetype)) {

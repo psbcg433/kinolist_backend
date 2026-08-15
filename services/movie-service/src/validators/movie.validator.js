@@ -37,5 +37,38 @@ export function validateSearchQuery(query) {
       throw new ApiError(400, 'VALIDATION_FAILED', 'year (y) must be a valid year');
     }
   }
-  return { query: q, type, year };
+  let page = 1;
+  if (query?.page !== undefined && query.page !== '') {
+    page = parseInt(String(query.page), 10);
+    if (Number.isNaN(page) || page < 1 || page > 100) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'page must be an integer between 1 and 100');
+    }
+  }
+  return { query: q, type, year, page };
+}
+
+export function validateCatalogQuery(query) {
+  const genre = typeof query?.genre === 'string' ? query.genre.trim() : '';
+  if (genre.length > 40) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'genre must be at most 40 characters');
+  }
+
+  let minYear;
+  if (query?.minYear !== undefined && query.minYear !== '') {
+    minYear = parseInt(String(query.minYear), 10);
+    if (Number.isNaN(minYear) || minYear < 1900 || minYear > 2100) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'minYear must be a valid year');
+    }
+  }
+
+  const sort = typeof query?.sort === 'string' && query.sort ? query.sort : 'popular';
+  if (!['popular', 'rating', 'recent'].includes(sort)) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'sort must be popular, rating or recent');
+  }
+
+  const limit = query?.limit === undefined || query.limit === '' ? 20 : parseInt(String(query.limit), 10);
+  if (Number.isNaN(limit) || limit < 1 || limit > 50) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'limit must be an integer between 1 and 50');
+  }
+  return { genre: genre.toLowerCase(), minYear, sort, limit };
 }

@@ -39,6 +39,24 @@ export const searchHistoryRepository = {
     return SearchHistory.findOne({ userId }).lean();
   },
 
+  async popularQueries({ since, limit = 8 } = {}) {
+    const rows = await SearchHistory.aggregate([
+      { $unwind: '$queries' },
+      ...(since ? [{ $match: { 'queries.at': { $gte: since } } }] : []),
+      {
+        $group: {
+          _id: { $toLower: '$queries.q' },
+          count: { $sum: 1 },
+          lastSearchedAt: { $max: '$queries.at' },
+        },
+      },
+      { $sort: { count: -1, lastSearchedAt: -1 } },
+      { $limit: limit },
+      { $project: { _id: 0, query: '$_id', count: 1, lastSearchedAt: 1 } },
+    ]);
+    return rows;
+  },
+
   async deleteByUserId(userId) {
     return SearchHistory.findOneAndDelete({ userId });
   },

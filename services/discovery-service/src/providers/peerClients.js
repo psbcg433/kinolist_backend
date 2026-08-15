@@ -49,14 +49,32 @@ async function peerRequest({ baseUrl, path, method = 'GET', body, timeout }) {
 }
 
 export const movieClient = {
-  async search(query, { type, year } = {}) {
+  async catalog({ genre, minYear, sort = 'popular', limit = 20 } = {}) {
+    const params = new URLSearchParams({ sort, limit: String(limit) });
+    if (genre) params.set('genre', genre);
+    if (minYear) params.set('minYear', String(minYear));
+    const result = await peerRequest({
+      baseUrl: config.peers.movieServiceUrl,
+      path: `/internal/movie/catalog?${params.toString()}`,
+    });
+    return {
+      movies: result?.data?.movies || [],
+      total: Number(result?.meta?.total || 0),
+    };
+  },
+
+  async search(query, { type, year, page = 1 } = {}) {
     const params = new URLSearchParams({ q: query });
     if (type) params.set('type', type);
     if (year) params.set('y', String(year));
+    params.set('page', String(page));
     const result = await peerRequest({ baseUrl: config.peers.movieServiceUrl, path: `/internal/movie/search?${params.toString()}` });
     return {
       movies: result?.data?.movies || [],
       total: Number(result?.meta?.total || 0),
+      page: Number(result?.meta?.page || page),
+      pageSize: Number(result?.meta?.pageSize || 0),
+      totalPages: Number(result?.meta?.totalPages || 0),
     };
   },
 

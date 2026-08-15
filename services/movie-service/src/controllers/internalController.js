@@ -1,9 +1,19 @@
 import { movieService } from '../services/movieService.js';
-import { validateImdbID, validateBatchIds, validateSearchQuery } from '../validators/movie.validator.js';
-import { movieDetailDTO, movieSearchDTO } from '../utils/movieDto.js';
+import { validateImdbID, validateBatchIds, validateCatalogQuery, validateSearchQuery } from '../validators/movie.validator.js';
+import { movieCardDTO, movieDetailDTO, movieSearchDTO } from '../utils/movieDto.js';
 import { sendSuccess } from '../utils/response.js';
 
 export const internalController = {
+  async catalog(req, res, next) {
+    try {
+      const options = validateCatalogQuery(req.query);
+      const movies = (await movieService.catalog(options)).map(movieCardDTO).filter(Boolean);
+      sendSuccess(req, res, { movies }, { meta: { total: movies.length } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getById(req, res, next) {
     try {
       const imdbID = validateImdbID(req.params.imdbID);
@@ -29,9 +39,13 @@ export const internalController = {
 
   async search(req, res, next) {
     try {
-      const { query, type, year } = validateSearchQuery(req.query);
-      const { movies, total } = movieSearchDTO(await movieService.search(query, { type, year }));
-      sendSuccess(req, res, { movies }, { meta: { total } });
+      const { query, type, year, page } = validateSearchQuery(req.query);
+      const result = movieSearchDTO(
+        await movieService.search(query, { type, year, page }),
+        { page }
+      );
+      const { movies, ...meta } = result;
+      sendSuccess(req, res, { movies }, { meta });
     } catch (err) {
       next(err);
     }

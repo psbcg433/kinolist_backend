@@ -78,6 +78,9 @@ const config = {
     searchHistoryCap: optionalInt('SEARCH_HISTORY_CAP', 50),
     maxAiResults: optionalInt('MAX_AI_RESULTS', 5),
     maxRecommendResolve: optionalInt('MAX_RECOMMEND_RESOLVE', 8),
+    feedEnrichLimit: optionalInt('FEED_ENRICH_LIMIT', 12),
+    feedResolvePerSeed: optionalInt('FEED_RESOLVE_PER_SEED', 2),
+    trendingWindowDays: optionalInt('TRENDING_WINDOW_DAYS', 30),
   },
   rateLimit: {
     aiWindowMs: optionalInt('RATE_LIMIT_AI_WINDOW_MS', 60_000),
